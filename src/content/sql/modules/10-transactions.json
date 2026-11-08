@@ -1,0 +1,115 @@
+{
+  "id": "10-transactions",
+  "theoryFile": "10-transactions.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Два сеанса psql. В сеансе 1 открой транзакцию и поставь Pizza Hut рейтинг 5. Что увидит сеанс 2 до и после COMMIT сеанса 1? Напиши шаги обоих сеансов.",
+      "hint": "Шаги: S1 BEGIN → S1 UPDATE → S1 SELECT → S2 SELECT → S1 COMMIT → S2 SELECT.",
+      "solution": "-- 1. S1\nBEGIN;\n-- 2. S1\nUPDATE pizzeria SET rating = 5 WHERE name = 'Pizza Hut';\n-- 3. S1: видит 5 — свои изменения видны внутри транзакции\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 4. S2: видит старое значение — изменения S1 не зафиксированы\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 5. S1\nCOMMIT;\n-- 6. S2: теперь видит 5\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';",
+      "language": "sql",
+      "note": "Это и есть отсутствие dirty read. Если сеанс завис с открытой транзакцией — найди его в pg_stat_activity и отмени pg_cancel_backend(pid)."
+    },
+    {
+      "id": "ex01",
+      "task": "Воспроизведи lost update на READ COMMITTED: оба сеанса читают рейтинг Pizza Hut, S1 ставит 4, S2 ставит 3.6. Какой рейтинг будет в итоге и почему?",
+      "hint": "Второй UPDATE не выполнится сразу: он ждёт, пока S1 не сделает COMMIT.",
+      "solution": "-- 1. S1\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\n-- 2. S2\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\n-- 3. S1: 4.6\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 4. S2: 4.6\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 5. S1\nUPDATE pizzeria SET rating = 4 WHERE name = 'Pizza Hut';\n-- 6. S2: зависает — строка заблокирована S1\nUPDATE pizzeria SET rating = 3.6 WHERE name = 'Pizza Hut';\n-- 7. S1: после COMMIT UPDATE в S2 выполняется\nCOMMIT;\n-- 8. S2\nCOMMIT;\n-- 9. S1 и S2: оба видят 3.6\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';",
+      "language": "sql",
+      "note": "Итог 3.6 — изменение S1 (4) потеряно. Проверено на PostgreSQL 16 двумя параллельными сеансами."
+    },
+    {
+      "id": "ex02",
+      "task": "Повтори сценарий ex01 на REPEATABLE READ. Что изменится?",
+      "hint": "Тот же порядок шагов, только уровень изоляции другой. Смотри, что вернёт UPDATE в S2 после COMMIT в S1.",
+      "solution": "-- 1. S1\nBEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n-- 2. S2\nBEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n-- 3. S1: 4.6\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 4. S2: 4.6\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 5. S1\nUPDATE pizzeria SET rating = 4 WHERE name = 'Pizza Hut';\n-- 6. S2: зависает\nUPDATE pizzeria SET rating = 3.6 WHERE name = 'Pizza Hut';\n-- 7. S1: в S2 сразу ERROR: could not serialize access due to concurrent update\nCOMMIT;\n-- 8. S2: транзакция уже сломана — COMMIT выполнит ROLLBACK\nCOMMIT;\n-- 9. S1 и S2: оба видят 4\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';",
+      "language": "sql",
+      "note": "Итог 4: изменение S1 сохранено, S2 получила ошибку и откатилась. Проверено на PostgreSQL 16. В приложении такую транзакцию повторяют заново."
+    },
+    {
+      "id": "ex03",
+      "task": "Воспроизведи non-repeatable read на READ COMMITTED: S1 дважды читает рейтинг Pizza Hut в одной транзакции, между чтениями S2 меняет его на 3.6 и коммитит.",
+      "hint": "S1 SELECT → S2 UPDATE + COMMIT → S1 SELECT.",
+      "solution": "-- 1. S1\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\n-- 2. S2\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\n-- 3. S1: старое значение\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 4. S2\nUPDATE pizzeria SET rating = 3.6 WHERE name = 'Pizza Hut';\n-- 5. S2\nCOMMIT;\n-- 6. S1: уже 3.6 — внутри той же транзакции!\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 7. S1\nCOMMIT;",
+      "language": "sql",
+      "note": "READ COMMITTED берёт новый снимок перед каждым запросом, поэтому второй SELECT видит чужой COMMIT."
+    },
+    {
+      "id": "ex04",
+      "task": "Повтори ex03, но S1 работает на SERIALIZABLE, а S2 ставит рейтинг 3.0. Что вернут оба SELECT в S1 и что он увидит после своего COMMIT?",
+      "hint": "Снимок SERIALIZABLE берётся при первом запросе и не меняется до конца транзакции.",
+      "solution": "-- 1. S1\nBEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;\n-- 2. S2\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\n-- 3. S1: старое значение\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 4. S2\nUPDATE pizzeria SET rating = 3.0 WHERE name = 'Pizza Hut';\n-- 5. S2\nCOMMIT;\n-- 6. S1: то же старое значение\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';\n-- 7. S1\nCOMMIT;\n-- 8. S1: теперь 3.0\nSELECT * FROM pizzeria WHERE name = 'Pizza Hut';",
+      "language": "sql",
+      "note": "Проверено на PostgreSQL 16: оба чтения внутри транзакции одинаковые, 3.0 видно только после COMMIT. REPEATABLE READ дал бы тот же результат."
+    },
+    {
+      "id": "ex05",
+      "task": "Воспроизведи phantom read на READ COMMITTED: S1 дважды считает SUM(rating) по всем пиццериям, между подсчётами S2 добавляет пиццерию с рейтингом 5.",
+      "hint": "S1 SUM → S2 INSERT + COMMIT → S1 SUM.",
+      "solution": "-- 1. S1\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\n-- 2. S2\nBEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;\n-- 3. S1: исходная сумма\nSELECT SUM(rating) FROM pizzeria;\n-- 4. S2\nINSERT INTO pizzeria (id, name, rating) VALUES (10, 'Kazan Pizza', 5);\n-- 5. S2\nCOMMIT;\n-- 6. S1: сумма выросла на 5 — появилась строка-«фантом»\nSELECT SUM(rating) FROM pizzeria;\n-- 7. S1\nCOMMIT;",
+      "language": "sql",
+      "note": "Отличие от non-repeatable read: там изменилась существующая строка, здесь появилась новая, подходящая под условие запроса."
+    },
+    {
+      "id": "ex06",
+      "task": "Повтори ex05 на REPEATABLE READ (S2 добавляет пиццерию с рейтингом 4). Изменится ли сумма внутри транзакции S1?",
+      "hint": "Снимок REPEATABLE READ не видит строк, закоммиченных после его создания.",
+      "solution": "-- 1. S1\nBEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n-- 2. S2\nBEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n-- 3. S1: исходная сумма (у тебя — 26.9)\nSELECT SUM(rating) FROM pizzeria;\n-- 4. S2\nINSERT INTO pizzeria (id, name, rating) VALUES (11, 'Kazan Pizza 2', 4);\n-- 5. S2\nCOMMIT;\n-- 6. S1: та же сумма — фантома нет\nSELECT SUM(rating) FROM pizzeria;\n-- 7. S1\nCOMMIT;\n-- 8. S1: сумма выросла на 4 (у тебя — 30.9)\nSELECT SUM(rating) FROM pizzeria;",
+      "language": "sql",
+      "note": "По стандарту SQL фантомы на REPEATABLE READ допустимы, но в PostgreSQL этот уровень построен на снимке и их не допускает."
+    },
+    {
+      "id": "ex07",
+      "task": "Получи deadlock: каждый сеанс обновляет pizzeria с id 1 и 2, но в противоположном порядке.",
+      "hint": "S1 блокирует id = 1, S2 блокирует id = 2, затем каждый пытается взять строку другого.",
+      "solution": "-- 1. S1\nBEGIN;\n-- 2. S2\nBEGIN;\n-- 3. S1: блокирует строку id = 1\nUPDATE pizzeria SET rating = 4 WHERE id = 1;\n-- 4. S2: блокирует строку id = 2\nUPDATE pizzeria SET rating = 4 WHERE id = 2;\n-- 5. S1: ждёт id = 2\nUPDATE pizzeria SET rating = 5 WHERE id = 2;\n-- 6. S2: ждёт id = 1 → цикл → ERROR: deadlock detected\nUPDATE pizzeria SET rating = 5 WHERE id = 1;\n-- 7. S1: ожидание снято — UPDATE выполнен, коммитим\nCOMMIT;\n-- 8. S2: транзакция откачена, COMMIT выполнит ROLLBACK\nCOMMIT;",
+      "language": "sql",
+      "note": "Проверено на PostgreSQL 16: в этом прогоне ошибку получил S2 — тот, кто замкнул цикл. Какую транзакцию откатят, не гарантируется: это та, чья проверка по deadlock_timeout первой обнаружит цикл. Лечение — блокировать строки в одном порядке во всех транзакциях (например, по возрастанию id)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "На каком уровне изоляции PostgreSQL возможен dirty read?",
+      "options": [
+        "READ UNCOMMITTED",
+        "READ COMMITTED",
+        "Ни на каком — READ UNCOMMITTED в PostgreSQL работает как READ COMMITTED",
+        "На всех, кроме SERIALIZABLE"
+      ],
+      "correctIndex": 2,
+      "explanation": "PostgreSQL принимает синтаксис READ UNCOMMITTED, но ведёт себя как READ COMMITTED: незафиксированные изменения других транзакций не видны никогда."
+    },
+    {
+      "id": "q2",
+      "question": "READ COMMITTED. Обе транзакции прочитали рейтинг 4.6. T1: UPDATE … = 4, COMMIT. T2 (ждала блокировку): UPDATE … = 3.6, COMMIT. Какой рейтинг в итоге?",
+      "options": ["4", "4.6", "Ошибка сериализации", "3.6"],
+      "correctIndex": 3,
+      "explanation": "На READ COMMITTED ожидавший UPDATE перечитывает новую версию строки и применяет своё изменение. Запись T1 потеряна — это lost update."
+    },
+    {
+      "id": "q3",
+      "question": "Почему на REPEATABLE READ повторный SELECT в транзакции не видит чужой COMMIT?",
+      "options": [
+        "Транзакция блокирует таблицу на чтение",
+        "Снимок данных берётся один раз — перед первым запросом транзакции",
+        "Чужие транзакции ждут, пока текущая не завершится",
+        "Результат первого SELECT кешируется"
+      ],
+      "correctIndex": 1,
+      "explanation": "MVCC: на REPEATABLE READ и SERIALIZABLE вся транзакция работает с одним снимком. На READ COMMITTED снимок новый перед каждым запросом. Блокировок на чтение нет."
+    },
+    {
+      "id": "q4",
+      "question": "Как предотвратить deadlock из ex07 в приложении?",
+      "options": [
+        "Обновлять строки во всех транзакциях в одном порядке, например по возрастанию id",
+        "Перейти на уровень SERIALIZABLE",
+        "Увеличить deadlock_timeout",
+        "Убрать BEGIN и COMMIT"
+      ],
+      "correctIndex": 0,
+      "explanation": "Цикл ожидания возникает только при встречном порядке захвата. SERIALIZABLE от deadlock не спасает, deadlock_timeout лишь откладывает его обнаружение, а без транзакций теряется атомарность."
+    }
+  ]
+}

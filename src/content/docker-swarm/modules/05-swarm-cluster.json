@@ -1,0 +1,94 @@
+{
+  "id": "05-swarm-cluster",
+  "theoryFile": "05-swarm-cluster.md",
+  "practice": [
+    {
+      "id": "vagrant-vm",
+      "task": "Описать в Vagrantfile менеджер-ВМ: Ubuntu 22.04, адрес 192.168.56.10 в private network, 4 GB RAM, 2 CPU, два shell-скрипта провижининга.",
+      "hint": "config.vm.define, vm.network \"private_network\", provider \"virtualbox\", vm.provision.",
+      "solution": "config.vm.define \"manager01\" do |manager|\n  manager.vm.hostname = \"manager01\"\n  manager.vm.network \"private_network\", ip: \"192.168.56.10\"\n  manager.vm.provider \"virtualbox\" do |vb|\n    vb.memory = \"4096\"\n    vb.cpus = 2\n  end\n  manager.vm.provision \"shell\", path: \"scripts/install-docker.sh\"\n  manager.vm.provision \"shell\", path: \"scripts/init-manager.sh\"\nend",
+      "language": "ruby",
+      "note": "Из swarm/Vagrantfile."
+    },
+    {
+      "id": "init",
+      "task": "Инициализировать Swarm на менеджере с адресом private network и сохранить токен воркера в общую папку.",
+      "hint": "swarm init --advertise-addr, join-token worker -q.",
+      "solution": "sudo docker swarm init --advertise-addr 192.168.56.10\nsudo docker swarm join-token worker -q > /vagrant/worker_token",
+      "language": "bash",
+      "note": "Из swarm/scripts/init-manager.sh."
+    },
+    {
+      "id": "join",
+      "task": "Скрипт воркера: дождаться токена, выйти из старого кластера, если нода в нём состояла, и подключиться с адресом своей private network.",
+      "hint": "Цикл while ожидания файла, swarm leave --force, swarm join --advertise-addr.",
+      "solution": "#!/bin/bash\nNODE_IP=$1\n\nwhile [ ! -f /vagrant/worker_token ]; do\n  sleep 2\ndone\nTOKEN=$(cat /vagrant/worker_token)\n\nsudo docker swarm leave --force 2>/dev/null\nsudo docker swarm join --token \"$TOKEN\" --advertise-addr \"$NODE_IP\" 192.168.56.10:2377",
+      "language": "bash",
+      "note": "Из swarm/scripts/join-worker.sh (переменные взяты в кавычки)."
+    },
+    {
+      "id": "node-ls",
+      "task": "Проверить, что в кластере три ноды в статусе Ready, и определить лидера.",
+      "hint": "docker node ls на менеджере.",
+      "solution": "vagrant ssh manager01\ndocker node ls",
+      "language": "bash",
+      "note": "Скриншот из проекта: manager01 (Leader), worker01, worker02 — Ready / Active."
+    },
+    {
+      "id": "drain",
+      "task": "Вывести worker01 на обслуживание: увести с него все задачи, затем вернуть.",
+      "hint": "docker node update --availability.",
+      "solution": "docker node update --availability drain worker01\ndocker stack ps myapp --filter desired-state=running\ndocker node update --availability active worker01",
+      "language": "bash",
+      "note": "Задачи нет в проекте. После active Swarm не переносит задачи обратно сам — только новые и пересоздаваемые."
+    },
+    {
+      "id": "rotate",
+      "task": "Токен воркера мог утечь. Сделать старый токен недействительным.",
+      "hint": "join-token с --rotate.",
+      "solution": "docker swarm join-token --rotate worker",
+      "language": "bash",
+      "note": "Уже подключённые ноды остаются в кластере; новые смогут войти только с новым токеном."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему при подключении воркеров обязательно --advertise-addr с адресом private network?",
+      "options": [
+        "Без него Docker возьмёт NAT-адрес 10.0.2.15, одинаковый на всех ВМ, и overlay-сеть между нодами не заработает",
+        "Иначе не создастся токен",
+        "Это требование Vagrant",
+        "Так быстрее"
+      ],
+      "correctIndex": 0,
+      "explanation": "Описано в комментарии join-worker.sh проекта."
+    },
+    {
+      "id": "q2",
+      "question": "Сколько менеджеров нужно, чтобы кластер пережил отказ одного менеджера?",
+      "options": ["1", "2", "3", "4"],
+      "correctIndex": 2,
+      "explanation": "Raft требует большинства: из 3 после отказа остаются 2 — кворум есть. Из 2 после отказа — 1 из 2, кворума нет. В проекте 1 менеджер — отказ не переживается."
+    },
+    {
+      "id": "q3",
+      "question": "Чем опасна утечка join-token воркера?",
+      "options": [
+        "Ничем — токен одноразовый",
+        "Им можно удалить кластер",
+        "Можно присоединить к кластеру свою машину и получать на неё задачи вместе с их переменными окружения",
+        "Можно стать лидером"
+      ],
+      "correctIndex": 2,
+      "explanation": "Поэтому worker_token в .gitignore. Скомпрометированный токен ротируют: docker swarm join-token --rotate worker."
+    },
+    {
+      "id": "q4",
+      "question": "Какой порт нужен для трафика overlay-сетей между нодами?",
+      "options": ["2377/tcp", "4789/udp (VXLAN)", "7946/tcp", "8080/tcp"],
+      "correctIndex": 1,
+      "explanation": "2377 — управление, 7946 — обмен состоянием нод, 4789/udp — сам трафик контейнеров между нодами."
+    }
+  ]
+}

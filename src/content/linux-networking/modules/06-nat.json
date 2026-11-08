@@ -1,0 +1,93 @@
+{
+  "id": "06-nat",
+  "theoryFile": "06-nat.md",
+  "practice": [
+    {
+      "id": "default-deny",
+      "task": "На r2 запретить весь транзитный трафик и убедиться, что r1 больше не пингует ws22.",
+      "hint": "Политика цепочки FORWARD.",
+      "solution": "# r2\nsudo iptables -P FORWARD DROP\n\n# r1\nping -c 3 10.20.0.20",
+      "language": "bash",
+      "note": "В проекте: 100% loss."
+    },
+    {
+      "id": "icmp",
+      "task": "Разрешить через r2 только ICMP и проверить ping. Через сколько роутеров прошёл пакет?",
+      "hint": "Правило в FORWARD по протоколу; ответ — в поле ttl.",
+      "solution": "# r2\nsudo iptables -A FORWARD -p icmp -j ACCEPT\n\n# r1\nping -c 3 10.20.0.20",
+      "language": "bash",
+      "note": "В проекте: 0% loss, ttl=63 — один хоп через r2."
+    },
+    {
+      "id": "snat",
+      "task": "Разрешить хостам 10.20.0.0/26 открывать соединения наружу с подменой адреса источника на адрес r2. Проверить подключением с ws22 к Apache на r1.",
+      "hint": "Три правила: ответы (ESTABLISHED,RELATED), исходящие из внутренней сети, MASQUERADE в POSTROUTING на внешнем интерфейсе.",
+      "solution": "# r2\nsudo iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT\nsudo iptables -A FORWARD -s 10.20.0.0/26 -j ACCEPT\nsudo iptables -t nat -A POSTROUTING -s 10.20.0.0/26 -o enp0s3 -j MASQUERADE\n\n# ws22\ntelnet 10.100.0.11 80",
+      "language": "bash",
+      "note": "В проекте: Connected. В логе Apache на r1 источником будет 10.100.0.12 (r2), а не 10.20.0.20."
+    },
+    {
+      "id": "dnat",
+      "task": "Опубликовать Apache ws22 (10.20.0.20:80) на порту 8080 роутера r2 и проверить с r1.",
+      "hint": "DNAT в PREROUTING + разрешение в FORWARD уже на новый адрес и порт 80.",
+      "solution": "# r2\nsudo iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 10.20.0.20:80\nsudo iptables -A FORWARD -p tcp -d 10.20.0.20 --dport 80 -j ACCEPT\n\n# r1\ntelnet 10.100.0.12 8080",
+      "language": "bash",
+      "note": "В проекте: Connected. Apache на ws22 должен слушать 0.0.0.0:80 — configs/multi-node/ws22/apache-ports-nat.conf."
+    },
+    {
+      "id": "script",
+      "task": "Собрать все правила в /etc/firewall.sh так, чтобы скрипт можно было запускать повторно.",
+      "hint": "В начале очистить и filter, и nat.",
+      "solution": "#!/bin/bash\niptables -F\niptables -t nat -F\n\niptables -P FORWARD DROP\niptables -A FORWARD -p icmp -j ACCEPT\niptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT\niptables -A FORWARD -s 10.20.0.0/26 -j ACCEPT\n\niptables -t nat -A POSTROUTING -s 10.20.0.0/26 -o enp0s3 -j MASQUERADE\n\niptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 10.20.0.20:80\niptables -A FORWARD -p tcp -d 10.20.0.20 --dport 80 -j ACCEPT",
+      "language": "bash",
+      "note": "Скрипт из репозитория: configs/multi-node/r2/firewall.sh. Без -t nat -F каждый запуск добавлял бы дубликаты NAT-правил."
+    },
+    {
+      "id": "inspect",
+      "task": "Посмотреть итоговые правила обеих таблиц со счётчиками пакетов.",
+      "hint": "iptables -L для filter и для nat.",
+      "solution": "sudo iptables -L FORWARD -n -v\nsudo iptables -t nat -L -n -v",
+      "language": "bash"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "В какой цепочке делается DNAT (изменение адреса назначения)?",
+      "options": ["POSTROUTING", "PREROUTING", "INPUT", "OUTPUT"],
+      "correctIndex": 1,
+      "explanation": "Адрес назначения нужно поменять до решения о маршруте — иначе ядро решит, что пакет адресован самому роутеру. SNAT, наоборот, делается в POSTROUTING, после выбора маршрута."
+    },
+    {
+      "id": "q2",
+      "question": "Есть DNAT :8080 → 10.20.0.20:80 и политика FORWARD DROP. Какое разрешающее правило нужно в FORWARD?",
+      "options": [
+        "-p tcp --dport 8080 -j ACCEPT",
+        "-p tcp -d 10.100.0.12 --dport 8080 -j ACCEPT",
+        "Никакое — DNAT обходит FORWARD",
+        "-p tcp -d 10.20.0.20 --dport 80 -j ACCEPT"
+      ],
+      "correctIndex": 3,
+      "explanation": "К моменту FORWARD пакет уже переписан PREROUTING-ом: назначение — 10.20.0.20:80."
+    },
+    {
+      "id": "q3",
+      "question": "Зачем правило FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT?",
+      "options": [
+        "Пропускать ответные пакеты уже разрешённых соединений, не описывая их отдельно",
+        "Разрешить все новые соединения",
+        "Ускорить NAT",
+        "Включить логирование соединений"
+      ],
+      "correctIndex": 0,
+      "explanation": "conntrack помнит, кто начал соединение. С этим правилом достаточно разрешить только NEW-пакеты нужного направления — ответы пройдут сами."
+    },
+    {
+      "id": "q4",
+      "question": "ws22 (10.20.0.20) через MASQUERADE на r2 подключилась к Apache на r1. Какой IP клиента увидит Apache?",
+      "options": ["10.20.0.20", "10.20.0.1", "10.100.0.12 — внешний адрес r2", "0.0.0.0"],
+      "correctIndex": 2,
+      "explanation": "MASQUERADE подменяет адрес источника на адрес исходящего интерфейса (enp0s3 r2). Обратную замену для ответа делает conntrack."
+    }
+  ]
+}

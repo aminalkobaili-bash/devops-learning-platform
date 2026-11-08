@@ -1,0 +1,96 @@
+{
+  "id": "03-network",
+  "theoryFile": "03-network.md",
+  "practice": [
+    {
+      "id": "inspect",
+      "task": "Посмотреть текущий адрес интерфейса и шлюз по умолчанию. Как понять, что адрес получен по DHCP?",
+      "hint": "ip a и ip route. Ищи слово dynamic у адреса и proto dhcp у маршрута.",
+      "solution": "ip a\nip route",
+      "language": "bash",
+      "note": "В проекте: 10.0.2.15/24 dynamic, default via 10.0.2.2."
+    },
+    {
+      "id": "netplan-static",
+      "task": "Настроить статический адрес 10.0.2.50/24, шлюз 10.0.2.2 и DNS 1.1.1.1, 8.8.8.8 для enp0s3 через Netplan.",
+      "hint": "Отредактировать YAML в /etc/netplan/: dhcp4: false, addresses, gateway4, nameservers.",
+      "solution": "sudo nano /etc/netplan/00-installer-config.yaml\n\n# содержимое файла:\nnetwork:\n  ethernets:\n    enp0s3:\n      dhcp4: false\n      addresses:\n        - 10.0.2.50/24\n      gateway4: 10.0.2.2\n      nameservers:\n        addresses: [1.1.1.1, 8.8.8.8]\n  version: 2",
+      "language": "yaml",
+      "note": "Файл из репозитория: configs/netplan/00-installer-config.yaml. Отступы — только пробелами."
+    },
+    {
+      "id": "apply",
+      "task": "Применить конфигурацию так, чтобы при ошибке доступ к серверу вернулся автоматически. Затем применить окончательно.",
+      "hint": "У netplan есть режим с автоматическим откатом.",
+      "solution": "sudo netplan try\n# если всё работает — Enter, иначе через 120 с откат\nsudo netplan apply",
+      "language": "bash",
+      "note": "В проекте использовался netplan apply. На локальной VM это безопасно, на удалённом сервере — сначала try."
+    },
+    {
+      "id": "verify",
+      "task": "Проверить, что адрес стал статическим, шлюз на месте, а интернет и DNS работают.",
+      "hint": "ip, ip route, ping по IP и по имени.",
+      "solution": "ip -4 addr show enp0s3\nip route\nping -c 4 1.1.1.1\nping -c 4 ya.ru",
+      "language": "bash",
+      "note": "В проекте оба ping — 0% packet loss."
+    },
+    {
+      "id": "hostname-tz",
+      "task": "Задать серверу имя и часовой пояс Europe/Moscow.",
+      "hint": "hostnamectl и timedatectl.",
+      "solution": "sudo hostnamectl set-hostname user-1\nsudo timedatectl set-timezone Europe/Moscow\nhostnamectl\ntimedatectl",
+      "language": "bash",
+      "note": "Имя user-1 — пример: в проекте имя сначала задавалось здесь, потом менялось на user-2 из-под нового пользователя (модуль 02)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "ping 1.1.1.1 проходит, ping ya.ru — нет. В чём вероятная проблема?",
+      "options": [
+        "Нет маршрута по умолчанию",
+        "Интерфейс выключен",
+        "Не работает DNS-разрешение имён",
+        "Заблокирован ICMP"
+      ],
+      "correctIndex": 2,
+      "explanation": "Связь по IP есть — значит, адрес, шлюз и маршрут в порядке. Не получается превратить имя в адрес — смотри nameservers в Netplan и resolvectl status."
+    },
+    {
+      "id": "q2",
+      "question": "Чем sudo netplan try отличается от sudo netplan apply?",
+      "options": [
+        "try только проверяет синтаксис",
+        "try применяет конфиг и откатывает его, если не подтвердить в течение 120 секунд",
+        "try применяет конфиг только до перезагрузки",
+        "Ничем, это синонимы"
+      ],
+      "correctIndex": 1,
+      "explanation": "Если новая конфигурация отрежет SSH, подтвердить её не получится — и Netplan сам вернёт старую."
+    },
+    {
+      "id": "q3",
+      "question": "Что означает строка default via 10.0.2.2 dev enp0s3 в выводе ip route?",
+      "options": [
+        "Пакеты, для которых нет более точного маршрута, отправляются на шлюз 10.0.2.2",
+        "Адрес сервера — 10.0.2.2",
+        "DNS-сервер — 10.0.2.2",
+        "Подсеть 10.0.2.0/24 недоступна"
+      ],
+      "correctIndex": 0,
+      "explanation": "Маршрут по умолчанию (0.0.0.0/0) — «всё остальное». Через этот шлюз сервер выходит в интернет."
+    },
+    {
+      "id": "q4",
+      "question": "Почему в Netplan YAML нельзя делать отступы табуляцией?",
+      "options": [
+        "Netplan считает табуляцию комментарием",
+        "Это замедляет применение конфига",
+        "Табуляция работает только в version: 1",
+        "Спецификация YAML запрещает табуляцию в отступах — файл не распарсится"
+      ],
+      "correctIndex": 3,
+      "explanation": "В YAML структура задаётся отступами из пробелов. Табуляция — синтаксическая ошибка; netplan generate покажет её до применения."
+    }
+  ]
+}

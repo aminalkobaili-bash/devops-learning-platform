@@ -1,0 +1,16 @@
+{
+  "id": "linux-monitoring",
+  "title": "Linux System Monitoring",
+  "description": "Bash-утилиты для сбора информации о системе, анализа и нагрузки файловой системы, генерации и разбора логов nginx. Мониторинг хоста на Prometheus + node_exporter + Grafana и собственный экспортер на Bash.",
+  "stack": ["Bash", "awk", "find / du", "nginx", "Prometheus", "node_exporter", "Grafana 10.4", "GoAccess", "stress", "iperf3"],
+  "repo": "https://github.com/aminalkobaili-bash/linux-system-monitoring",
+  "modules": [
+    { "id": "01-sysinfo", "order": 1, "title": "Bash: информация о системе", "level": "beginner", "topics": ["source", "/proc/meminfo", "${var:-default}", "ANSI-цвета"] },
+    { "id": "02-dir-analyzer", "order": 2, "title": "Bash: анализ каталога", "level": "beginner", "topics": ["find", "du", "file", "md5sum"] },
+    { "id": "03-fs-load", "order": 3, "title": "Bash: генерация файлов и нагрузка на диск", "level": "intermediate", "topics": ["truncate", "dd", "df --output", "find -newermt"] },
+    { "id": "04-nginx-logs", "order": 4, "title": "Логи nginx: генерация и разбор awk", "level": "intermediate", "topics": ["combined", "awk", "sort | uniq", "GoAccess"] },
+    { "id": "05-prometheus-grafana", "order": 5, "title": "Prometheus, node_exporter и Grafana", "level": "intermediate", "topics": ["pull", "scrape_configs", "PromQL", "rate()"] },
+    { "id": "06-custom-exporter", "order": 6, "title": "Свой экспортер на Bash", "level": "advanced", "topics": ["exposition format", "/proc/stat", "gauge", "атомарная запись"] },
+    { "id": "07-load-testing", "order": 7, "title": "Нагрузочные тесты и чтение графиков", "level": "intermediate", "topics": ["stress", "iperf3", "scrape interval", "усреднение"] }
+  ]
+}

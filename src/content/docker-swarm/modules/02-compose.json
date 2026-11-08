@@ -1,0 +1,99 @@
+{
+  "id": "02-compose",
+  "theoryFile": "02-compose.md",
+  "practice": [
+    {
+      "id": "anchors",
+      "task": "Вынести общие переменные PostgreSQL в YAML-якорь и подключить его в двух сервисах, добавив каждому свою базу.",
+      "hint": "Блок x-… с &якорем, в сервисе <<: *якорь и дополнительный ключ.",
+      "solution": "x-postgres-env: &postgres-env\n  POSTGRES_HOST: database\n  POSTGRES_PORT: 5432\n  POSTGRES_USER: postgres\n  POSTGRES_PASSWORD: postgres\n\nservices:\n  hotel-service:\n    environment:\n      <<: *postgres-env\n      POSTGRES_DB: hotels_db\n\n  payment-service:\n    environment:\n      <<: *postgres-env\n      POSTGRES_DB: payments_db",
+      "language": "yaml"
+    },
+    {
+      "id": "required-env",
+      "task": "Сделать JWT-ключи обязательными: без них Compose должен отказаться стартовать с понятным сообщением.",
+      "hint": "${VAR:?message}.",
+      "solution": "x-jwt-env: &jwt-env\n  JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY in .env}\n  JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY in .env}",
+      "language": "yaml"
+    },
+    {
+      "id": "service-urls",
+      "task": "Передать booking-service адреса hotel, payment и loyalty сервисов, не используя localhost.",
+      "hint": "Имена сервисов Compose и порты в environment.",
+      "solution": "booking-service:\n  environment:\n    HOTEL_SERVICE_HOST: hotel-service\n    HOTEL_SERVICE_PORT: 8082\n    PAYMENT_SERVICE_HOST: payment-service\n    PAYMENT_SERVICE_PORT: 8084\n    LOYALTY_SERVICE_HOST: loyalty-service\n    LOYALTY_SERVICE_PORT: 8085",
+      "language": "yaml"
+    },
+    {
+      "id": "build-anchor",
+      "task": "Описать сборку сервиса через общий якорь x-java-build с отдельным аргументом SERVICE.",
+      "hint": "Слияние <<: в build и args рядом.",
+      "solution": "x-java-build: &java-build\n  context: .\n  dockerfile: docker/Dockerfile.java-service\n\nservices:\n  session-service:\n    build:\n      <<: *java-build\n      args:\n        SERVICE: session-service",
+      "language": "yaml"
+    },
+    {
+      "id": "config",
+      "task": "Посмотреть итоговую конфигурацию после раскрытия якорей и проверить, что без .env Compose не стартует.",
+      "hint": "docker compose config; временно переименовать .env.",
+      "solution": "docker compose config --services\nmv .env .env.bak\ndocker compose config >/dev/null   # error: set JWT_PRIVATE_KEY in .env\nmv .env.bak .env",
+      "language": "bash",
+      "note": "Полный вывод docker compose config содержит ключи — не публикуй его."
+    },
+    {
+      "id": "dns",
+      "task": "Проверить изнутри booking-service, что имя hotel-service резолвится.",
+      "hint": "getent hosts внутри контейнера.",
+      "solution": "docker compose exec booking-service getent hosts hotel-service",
+      "language": "bash"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему сервис в контейнере не может обратиться к соседнему по localhost:8082?",
+      "options": [
+        "localhost внутри контейнера — это сам контейнер; соседний сервис доступен по имени сервиса через DNS Docker",
+        "Порт 8082 закрыт фаерволом",
+        "localhost запрещён в Docker",
+        "Нужен ports: 8082:8082"
+      ],
+      "correctIndex": 0,
+      "explanation": "У каждого контейнера свой сетевой namespace. Поэтому адреса передаются переменными *_SERVICE_HOST."
+    },
+    {
+      "id": "q2",
+      "question": "Что делает <<: [*postgres-env, *jwt-env] в environment?",
+      "options": [
+        "Создаёт два новых сервиса",
+        "Подключает два .env-файла",
+        "Сливает ключи двух YAML-якорей в текущий словарь",
+        "Объявляет зависимость сервиса"
+      ],
+      "correctIndex": 2,
+      "explanation": "Якорь (&) запоминает блок, ссылка (*) вставляет, << сливает. Ключи рядом дополняют или перекрывают."
+    },
+    {
+      "id": "q3",
+      "question": "Почему container_name у всех сервисов мешал?",
+      "options": [
+        "Имена контейнеров длиннее 64 символов",
+        "Имена контейнеров глобальны на хосте: второй экземпляр проекта падал с Conflict … already in use",
+        "Сервисы переставали видеть друг друга",
+        "Compose запрещает container_name"
+      ],
+      "correctIndex": 1,
+      "explanation": "Для связи между сервисами достаточно имени сервиса. container_name к тому же мешает масштабированию."
+    },
+    {
+      "id": "q4",
+      "question": "Что произойдёт при docker compose up, если в .env нет JWT_PRIVATE_KEY, а в compose — ${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY in .env}?",
+      "options": [
+        "Сервисы стартуют с пустым ключом",
+        "Compose сгенерирует ключ",
+        "Предупреждение, но запуск продолжится",
+        "Compose откажется запускаться и выведет «set JWT_PRIVATE_KEY in .env»"
+      ],
+      "correctIndex": 3,
+      "explanation": "Лучше не стартовать, чем работать с пустым секретом и падать на первом запросе."
+    }
+  ]
+}

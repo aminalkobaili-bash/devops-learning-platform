@@ -1,0 +1,102 @@
+{
+  "id": "06-stack-deploy",
+  "theoryFile": "06-stack-deploy.md",
+  "practice": [
+    {
+      "id": "push",
+      "task": "Собрать образы всех сервисов и опубликовать их в Docker Hub, чтобы ноды Swarm могли их скачать.",
+      "hint": "docker login, затем build и push в цикле.",
+      "solution": "docker login\nfor s in session hotel booking payment loyalty report gateway; do\n  docker build -f docker/Dockerfile.java-service --build-arg SERVICE=$s-service -t aminblack/$s-service:latest .\n  docker push aminblack/$s-service:latest\ndone",
+      "language": "bash",
+      "note": "Из README. Образы на Hub собраны до чистки и содержат старый ключ JWT — их нужно пересобрать (модуль 04)."
+    },
+    {
+      "id": "service",
+      "task": "Описать сервис стека: образ из registry, лимит памяти 512M, гарантированные 384M, сеть overlay.",
+      "hint": "image, deploy.resources.limits / reservations, networks.",
+      "solution": "hotel-service:\n  image: aminblack/hotel-service:latest\n  environment:\n    JAVA_TOOL_OPTIONS: \"-Xmx192m -XX:+UseSerialGC\"\n    POSTGRES_HOST: database\n    POSTGRES_DB: hotels_db\n  networks:\n    - app-network\n  deploy:\n    resources:\n      limits:\n        memory: 512M\n      reservations:\n        memory: 384M\n\nnetworks:\n  app-network:\n    driver: overlay",
+      "language": "yaml",
+      "note": "Сокращено из swarm/docker-stack.yml."
+    },
+    {
+      "id": "placement",
+      "task": "Закрепить базу данных на менеджере.",
+      "hint": "deploy.placement.constraints по node.role.",
+      "solution": "database:\n  deploy:\n    placement:\n      constraints: [node.role == manager]",
+      "language": "yaml"
+    },
+    {
+      "id": "deploy",
+      "task": "На менеджере загрузить переменные из .env в окружение и развернуть стек myapp.",
+      "hint": "set -a; . ./.env; set +a — затем docker stack deploy -c.",
+      "solution": "cd /vagrant\nset -a; . ./.env; set +a\ndocker stack deploy -c swarm/docker-stack.yml myapp\ndocker stack services myapp",
+      "language": "bash",
+      "note": "Из README. В выводе stack services порты есть только у nginx."
+    },
+    {
+      "id": "where",
+      "task": "Посмотреть, на каких нодах запущены задачи стека, и найти задачи с ошибками.",
+      "hint": "docker stack ps; --no-trunc покажет полный текст ошибки.",
+      "solution": "docker stack ps myapp\ndocker stack ps myapp --no-trunc --filter desired-state=shutdown",
+      "language": "bash"
+    },
+    {
+      "id": "mesh",
+      "task": "Проверить routing mesh: обратиться к gateway через worker01, хотя nginx работает на manager01.",
+      "hint": "curl на адрес воркера и опубликованный порт.",
+      "solution": "curl -s -o /dev/null -w '%{http_code}\\n' http://192.168.56.11:8087/api/v1/gateway/hotels",
+      "language": "bash",
+      "note": "Задачи нет в проекте. Без токена gateway, скорее всего, вернёт ошибку авторизации — но любой HTTP-код (а не Connection refused) показывает, что запрос дошёл через ingress."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему в docker-stack.yml нет build:, только image:?",
+      "options": [
+        "build: устарел",
+        "Swarm не собирает образы: каждая нода скачивает образ из registry",
+        "Так образы меньше",
+        "build: работает только на менеджере"
+      ],
+      "correctIndex": 1,
+      "explanation": "Поэтому образы публикуются в Docker Hub (aminblack/*) до деплоя."
+    },
+    {
+      "id": "q2",
+      "question": "Что делает docker stack deploy с depends_on из файла?",
+      "options": [
+        "Ждёт healthcheck зависимостей",
+        "Запускает сервисы в порядке зависимостей",
+        "Выдаёт ошибку",
+        "Игнорирует — все сервисы стартуют одновременно"
+      ],
+      "correctIndex": 3,
+      "explanation": "Поэтому в образе оставлен wait-for-it.sh, а сервисы должны уметь переживать недоступность зависимостей."
+    },
+    {
+      "id": "q3",
+      "question": "nginx опубликовал порт 8087 и работает на manager01. Ответит ли запрос на worker01:8087?",
+      "options": [
+        "Да — routing mesh открывает опубликованный порт на каждой ноде и доставляет запрос к задаче",
+        "Нет, только на manager01",
+        "Только если на worker01 есть реплика nginx",
+        "Только по HTTPS"
+      ],
+      "correctIndex": 0,
+      "explanation": "Ingress-сеть Swarm. Для балансировщика перед кластером можно указывать адреса всех нод."
+    },
+    {
+      "id": "q4",
+      "question": "Чем deploy.resources.reservations отличается от limits?",
+      "options": [
+        "Ничем",
+        "reservations — для CPU, limits — для памяти",
+        "reservations — гарантия: планировщик ставит задачу только на ноду с таким свободным ресурсом; limits — потолок, при превышении памяти — OOM kill",
+        "limits применяются только при старте"
+      ],
+      "correctIndex": 2,
+      "explanation": "В проекте: 7 сервисов × 384M резерва — Swarm распределяет их так, чтобы уместились на ВМ по 3–4 GB."
+    }
+  ]
+}

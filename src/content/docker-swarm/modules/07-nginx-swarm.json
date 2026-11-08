@@ -1,0 +1,94 @@
+{
+  "id": "07-nginx-swarm",
+  "theoryFile": "07-nginx-swarm.md",
+  "practice": [
+    {
+      "id": "dynamic-proxy",
+      "task": "Настроить nginx на порту 8081 так, чтобы он запускался, даже если session-service ещё не существует, и резолвил его адрес при запросах.",
+      "hint": "resolver 127.0.0.11 + set $var + proxy_pass $var.",
+      "solution": "http {\n    resolver 127.0.0.11 valid=10s ipv6=off;\n\n    server {\n        listen 8081;\n        location / {\n            set $session_service http://session-service:8081;\n            proxy_pass $session_service;\n            proxy_set_header Host $host;\n            proxy_set_header X-Real-IP $remote_addr;\n        }\n    }\n}",
+      "language": "nginx",
+      "note": "Из nginx/nginx.conf."
+    },
+    {
+      "id": "timeouts",
+      "task": "Для gateway разрешить ответы до 5 минут, а на установку соединения дать 30 секунд.",
+      "hint": "proxy_connect_timeout, proxy_send_timeout, proxy_read_timeout.",
+      "solution": "location / {\n    set $gateway_service http://gateway-service:8087;\n    proxy_pass $gateway_service;\n    proxy_connect_timeout 30s;\n    proxy_send_timeout 300s;\n    proxy_read_timeout 300s;\n}",
+      "language": "nginx"
+    },
+    {
+      "id": "nginx-service",
+      "task": "Описать nginx в стеке: публикует 8081 и 8087, конфиг только для чтения, работает на менеджере.",
+      "hint": "ports, volumes :ro, deploy.placement.",
+      "solution": "nginx:\n  image: nginx:1.30.6-alpine\n  ports:\n    - \"8081:8081\"\n    - \"8087:8087\"\n  volumes:\n    - /vagrant/nginx/nginx.conf:/etc/nginx/nginx.conf:ro\n  networks:\n    - app-network\n  deploy:\n    placement:\n      constraints: [node.role == manager]",
+      "language": "yaml"
+    },
+    {
+      "id": "docker-config",
+      "task": "Передать nginx.conf через docker config, чтобы nginx мог работать на любой ноде без общей папки.",
+      "hint": "Секция configs в стеке: file и монтирование в target.",
+      "solution": "services:\n  nginx:\n    image: nginx:1.30.6-alpine\n    configs:\n      - source: nginx_conf\n        target: /etc/nginx/nginx.conf\n\nconfigs:\n  nginx_conf:\n    file: ../nginx/nginx.conf",
+      "language": "yaml",
+      "note": "Задачи нет в проекте. docker config неизменяем: при изменении файла — новое имя конфига (например, nginx_conf_v2) и повторный stack deploy. Путь file — относительно docker-stack.yml."
+    },
+    {
+      "id": "check",
+      "task": "Проверить конфиг nginx в работающем контейнере стека и посмотреть его логи.",
+      "hint": "docker service logs; docker exec в контейнер по фильтру имени.",
+      "solution": "docker service logs --tail 50 myapp_nginx\ndocker exec $(docker ps -q -f name=myapp_nginx) nginx -t",
+      "language": "bash",
+      "note": "docker exec работает только на той ноде, где запущен контейнер — здесь на manager01."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Что будет при старте nginx со статическим proxy_pass http://session-service:8081, если сервиса ещё нет в DNS?",
+      "options": [
+        "nginx запустится и будет отдавать 502",
+        "nginx не запустится: host not found in upstream",
+        "nginx будет ждать сервис",
+        "nginx использует localhost"
+      ],
+      "correctIndex": 1,
+      "explanation": "Статическое имя резолвится один раз при загрузке конфига. Переменная + resolver откладывает резолв до запроса."
+    },
+    {
+      "id": "q2",
+      "question": "Что такое 127.0.0.11 в resolver?",
+      "options": [
+        "Встроенный DNS Docker, доступный в контейнерах пользовательских сетей",
+        "Адрес менеджера Swarm",
+        "Адрес nginx",
+        "Публичный DNS Cloudflare"
+      ],
+      "correctIndex": 0,
+      "explanation": "Именно он отвечает на имена сервисов (session-service → VIP)."
+    },
+    {
+      "id": "q3",
+      "question": "Book Hotel обрывался с 504 Gateway Timeout. Почему увеличение proxy_read_timeout — лечение симптома?",
+      "options": [
+        "Таймауты нельзя менять",
+        "504 — ошибка клиента",
+        "nginx всё равно обрежет ответ",
+        "Причина — синхронная обработка 61 дня (~250 внутренних запросов) за один HTTP-запрос; правильнее асинхронно: 202 + фоновая обработка"
+      ],
+      "correctIndex": 3,
+      "explanation": "Долгие синхронные запросы держат соединения и упираются в таймауты на каждом звене цепочки."
+    },
+    {
+      "id": "q4",
+      "question": "Зачем в стеке порты публикует только nginx?",
+      "options": [
+        "Swarm не позволяет публиковать больше одного сервиса",
+        "Так быстрее",
+        "Единая точка входа: внутренние сервисы, база и брокер недоступны извне, доступ к ним — только через overlay-сеть",
+        "Java-сервисы не умеют слушать порты"
+      ],
+      "correctIndex": 2,
+      "explanation": "Меньше открытых портов — меньше поверхность атаки; на nginx удобно добавить TLS, лимиты и логи."
+    }
+  ]
+}

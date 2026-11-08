@@ -1,0 +1,94 @@
+{
+  "id": "02-style",
+  "theoryFile": "02-style.md",
+  "practice": [
+    {
+      "id": "config",
+      "task": "Создать в корне репозитория конфиг clang-format на основе стиля Google.",
+      "hint": "Файл .clang-format, ключ BasedOnStyle.",
+      "solution": "---\nBasedOnStyle: Google",
+      "language": "yaml",
+      "note": "Именно в корне: clang-format ищет конфиг в каталоге файла и выше."
+    },
+    {
+      "id": "check",
+      "task": "Проверить, соответствует ли app/main.c стилю, ничего не меняя, так чтобы при нарушении команда завершалась с ошибкой.",
+      "hint": "--dry-run и --Werror.",
+      "solution": "clang-format --dry-run --Werror app/main.c\necho \"exit $?\"",
+      "language": "bash"
+    },
+    {
+      "id": "break",
+      "task": "Испортить форматирование (убрать отступ у case) и убедиться, что проверка падает.",
+      "hint": "sed, затем та же проверка.",
+      "solution": "sed 's/^    case/  case/' app/main.c > /tmp/bad.c\ncp .clang-format /tmp/\nclang-format --dry-run --Werror /tmp/bad.c\n# error: code should be clang-formatted [-Wclang-format-violations]",
+      "language": "bash",
+      "note": "Проверено при подготовке модуля. .clang-format копируется рядом, иначе /tmp/bad.c проверится по LLVM."
+    },
+    {
+      "id": "fix",
+      "task": "Отформатировать файл на месте.",
+      "hint": "Флаг -i.",
+      "solution": "clang-format -i app/main.c\ngit diff app/main.c",
+      "language": "bash"
+    },
+    {
+      "id": "style-sh",
+      "task": "Написать style.sh, который печатает версию clang-format, проверяет стиль и позволяет задать версию переменной окружения.",
+      "hint": "set -euo pipefail, ${CLANG_FORMAT:-clang-format}.",
+      "solution": "#!/bin/bash\nset -euo pipefail\n\nCLANG_FORMAT=\"${CLANG_FORMAT:-clang-format}\"\n\"$CLANG_FORMAT\" --version\n\"$CLANG_FORMAT\" --dry-run --Werror app/main.c\necho \"Code style OK\"",
+      "language": "bash",
+      "note": "Из scripts/style.sh. Запуск с фиксированной версией: CLANG_FORMAT=clang-format-18 bash scripts/style.sh."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": ".clang-format лежит в materials/linters/, проверяется app/main.c. Каким стилем будет проверка?",
+      "options": [
+        "Из materials/linters/.clang-format",
+        "Стилем по умолчанию LLVM — конфиг не в каталоге файла и не выше",
+        "Проверка упадёт с ошибкой «конфиг не найден»",
+        "Стилем Google"
+      ],
+      "correctIndex": 1,
+      "explanation": "Найденная в проекте ошибка: проверка проходила, но по чужому стилю. Конфиг перенесён в корень."
+    },
+    {
+      "id": "q2",
+      "question": "Что делает clang-format --dry-run --Werror?",
+      "options": [
+        "Форматирует файл",
+        "Проверяет только синтаксис C",
+        "Не меняет файл, а при нарушениях стиля завершается с ненулевым кодом",
+        "Создаёт .clang-format"
+      ],
+      "correctIndex": 2,
+      "explanation": "Ненулевой код — то, что делает job красным."
+    },
+    {
+      "id": "q3",
+      "question": "Почему версию clang-format фиксируют в CI?",
+      "options": [
+        "Разные версии могут форматировать одну конструкцию по-разному — CI падал бы на коде, отформатированном другой версией",
+        "Новые версии платные",
+        "Старые версии не поддерживают Google",
+        "Это требование GitLab"
+      ],
+      "correctIndex": 0,
+      "explanation": "В проекте — переменная CLANG_FORMAT=clang-format-18 и вывод версии в лог."
+    },
+    {
+      "id": "q4",
+      "question": "Зачем проверка стиля в CI, если у разработчиков есть pre-commit хук?",
+      "options": [
+        "Хуки работают только в Linux",
+        "CI быстрее",
+        "Хук нельзя настроить для C",
+        "Хуки локальные и необязательные (git commit --no-verify) — CI гарантирует проверку для всех"
+      ],
+      "correctIndex": 3,
+      "explanation": "Хук ускоряет обратную связь, CI — единый обязательный барьер."
+    }
+  ]
+}

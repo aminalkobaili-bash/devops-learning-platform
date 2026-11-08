@@ -1,0 +1,83 @@
+{
+  "id": "02-users",
+  "theoryFile": "02-users.md",
+  "practice": [
+    {
+      "id": "adduser",
+      "task": "Создать пользователя amuser2 с основной группой adm.",
+      "hint": "adduser с флагом выбора основной группы.",
+      "solution": "sudo adduser --ingroup adm amuser2",
+      "language": "bash"
+    },
+    {
+      "id": "passwd-check",
+      "task": "Убедиться, что пользователь появился в системе, и посмотреть его UID, GID, домашний каталог и оболочку.",
+      "hint": "Найти строку в /etc/passwd.",
+      "solution": "grep amuser2 /etc/passwd\n# или всё о пользователе одной командой\nid amuser2",
+      "language": "bash"
+    },
+    {
+      "id": "sudo-group",
+      "task": "Дать amuser2 права sudo, не удаляя его из уже существующих групп, и проверить список групп.",
+      "hint": "usermod с флагами «добавить» + «дополнительные группы».",
+      "solution": "sudo usermod -aG sudo amuser2\ngroups amuser2",
+      "language": "bash",
+      "note": "В проекте groups показал: adm sudo. Без -a пользователь потерял бы остальные дополнительные группы."
+    },
+    {
+      "id": "as-sudo-user",
+      "task": "От имени amuser2 выполнить административную команду — сменить hostname на user-2.",
+      "hint": "Переключиться на пользователя, затем sudo + hostnamectl.",
+      "solution": "su - amuser2\nsudo hostnamectl set-hostname user-2\nhostname",
+      "language": "bash",
+      "note": "sudo спрашивает пароль amuser2, а не root. Запись о вызове появится в /var/log/auth.log."
+    },
+    {
+      "id": "sudo-log",
+      "task": "Найти в логах, какие команды выполнялись через sudo.",
+      "hint": "Все события sudo пишутся в auth.log.",
+      "solution": "sudo grep sudo /var/log/auth.log",
+      "language": "bash"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Пользователь в группах adm, docker. Выполнили sudo usermod -G sudo user (без -a). В каких группах он теперь?",
+      "options": ["adm, docker, sudo", "adm, sudo", "только sudo (плюс основная группа)", "Ошибка: нужен флаг -a"],
+      "correctIndex": 2,
+      "explanation": "-G без -a заменяет весь список дополнительных групп. Правильно — usermod -aG sudo user."
+    },
+    {
+      "id": "q2",
+      "question": "Что означает x во втором поле строки /etc/passwd?",
+      "options": [
+        "Пароль хранится в /etc/shadow",
+        "Пользователь заблокирован",
+        "Вход без пароля",
+        "Пользователь — администратор"
+      ],
+      "correctIndex": 0,
+      "explanation": "/etc/passwd читается всеми, поэтому хеши паролей вынесены в /etc/shadow, доступный только root."
+    },
+    {
+      "id": "q3",
+      "question": "Чей пароль спрашивает sudo?",
+      "options": ["root", "Любого администратора", "Пароль не нужен", "Текущего пользователя"],
+      "correctIndex": 3,
+      "explanation": "sudo подтверждает, что за терминалом именно этот пользователь, и проверяет его права в sudoers. Пароль root ему не нужен — его спрашивает su."
+    },
+    {
+      "id": "q4",
+      "question": "Как безопасно редактировать /etc/sudoers?",
+      "options": [
+        "sudo nano /etc/sudoers",
+        "sudo visudo — он проверяет синтаксис перед сохранением",
+        "Отредактировать копию и скопировать через cp",
+        "Через usermod"
+      ],
+      "correctIndex": 1,
+      "explanation": "Синтаксическая ошибка в sudoers ломает sudo для всех пользователей. visudo не даст сохранить невалидный файл."
+    }
+  ]
+}

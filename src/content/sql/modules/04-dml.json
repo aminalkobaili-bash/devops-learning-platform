@@ -1,0 +1,155 @@
+{
+  "id": "04-dml",
+  "theoryFile": "04-dml.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Вывести пиццы ценой от 800 до 1000 из пиццерий, которые посещала Kate: pizza_name, price, pizzeria_name, visit_date. Сортировка по пицце, цене, пиццерии.",
+      "hint": "person → person_visits → pizzeria → menu, цена через BETWEEN.",
+      "solution": "SELECT m.pizza_name,\n       m.price,\n       pz.name AS pizzeria_name,\n       pv.visit_date\nFROM person p\nJOIN person_visits pv ON p.id = pv.person_id\nJOIN pizzeria pz ON pv.pizzeria_id = pz.id\nJOIN menu m ON pz.id = m.pizzeria_id\nWHERE p.name = 'Kate'\n  AND m.price BETWEEN 800 AND 1000\nORDER BY m.pizza_name, m.price, pizzeria_name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex01",
+      "task": "Вывести id позиций меню (menu_id), которые никто ни разу не заказывал. Сортировка по menu_id.",
+      "hint": "Все id меню минус все menu_id из заказов.",
+      "solution": "SELECT id AS menu_id FROM menu\nEXCEPT\nSELECT menu_id FROM person_order\nORDER BY menu_id;",
+      "language": "sql"
+    },
+    {
+      "id": "ex02",
+      "task": "Для незаказанных позиций из ex01 вывести pizza_name, price и pizzeria_name. Сортировка по пицце и цене.",
+      "hint": "Запрос из ex01 — в подзапрос внутри IN.",
+      "solution": "SELECT m.pizza_name,\n       m.price,\n       pz.name AS pizzeria_name\nFROM menu m\nJOIN pizzeria pz ON m.pizzeria_id = pz.id\nWHERE m.id IN (\n  SELECT id FROM menu\n  EXCEPT\n  SELECT menu_id FROM person_order\n)\nORDER BY m.pizza_name, m.price;",
+      "language": "sql"
+    },
+    {
+      "id": "ex03",
+      "task": "Найти пиццерии, которые женщины посещали чаще, чем мужчины, или мужчины чаще, чем женщины. Учитывать количество визитов. Вывести pizzeria_name по алфавиту.",
+      "hint": "«Чаще» = вычитание по количеству: EXCEPT ALL в обе стороны, результаты склеить UNION ALL.",
+      "solution": "SELECT DISTINCT pz.name AS pizzeria_name\nFROM (\n  (\n    SELECT pv.pizzeria_id\n    FROM person_visits pv\n    JOIN person p ON pv.person_id = p.id\n    WHERE p.gender = 'female'\n    EXCEPT ALL\n    SELECT pv.pizzeria_id\n    FROM person_visits pv\n    JOIN person p ON pv.person_id = p.id\n    WHERE p.gender = 'male'\n  )\n  UNION ALL\n  (\n    SELECT pv.pizzeria_id\n    FROM person_visits pv\n    JOIN person p ON pv.person_id = p.id\n    WHERE p.gender = 'male'\n    EXCEPT ALL\n    SELECT pv.pizzeria_id\n    FROM person_visits pv\n    JOIN person p ON pv.person_id = p.id\n    WHERE p.gender = 'female'\n  )\n) t\nJOIN pizzeria pz ON t.pizzeria_id = pz.id\nORDER BY pizzeria_name;",
+      "language": "sql",
+      "note": "Скобки обязательны: без них EXCEPT ALL и UNION ALL выполнятся слева направо одной цепочкой. DISTINCT нужен, потому что пиццерия с перевесом в 2+ визита остаётся после EXCEPT ALL несколько раз."
+    },
+    {
+      "id": "ex04",
+      "task": "Найти пиццерии, где заказывали только женщины или только мужчины. Дубликаты не нужны. Вывести pizzeria_name по алфавиту.",
+      "hint": "«Только» = наличие без учёта количества: EXCEPT без ALL в обе стороны, затем UNION.",
+      "solution": "SELECT pz.name AS pizzeria_name\nFROM pizzeria pz\nWHERE pz.id IN (\n  (\n    SELECT m.pizzeria_id\n    FROM person_order po\n    JOIN person p ON po.person_id = p.id\n    JOIN menu m ON po.menu_id = m.id\n    WHERE p.gender = 'female'\n    EXCEPT\n    SELECT m.pizzeria_id\n    FROM person_order po\n    JOIN person p ON po.person_id = p.id\n    JOIN menu m ON po.menu_id = m.id\n    WHERE p.gender = 'male'\n  )\n  UNION\n  (\n    SELECT m.pizzeria_id\n    FROM person_order po\n    JOIN person p ON po.person_id = p.id\n    JOIN menu m ON po.menu_id = m.id\n    WHERE p.gender = 'male'\n    EXCEPT\n    SELECT m.pizzeria_id\n    FROM person_order po\n    JOIN person p ON po.person_id = p.id\n    JOIN menu m ON po.menu_id = m.id\n    WHERE p.gender = 'female'\n  )\n)\nORDER BY pizzeria_name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex05",
+      "task": "Найти пиццерии, которые Andrey посещал, но ни разу в них ничего не заказывал. Вывести pizzeria_name по алфавиту.",
+      "hint": "Пиццерии визитов Andrey минус пиццерии его заказов (через menu.pizzeria_id).",
+      "solution": "SELECT pz.name AS pizzeria_name\nFROM pizzeria pz\nWHERE pz.id IN (\n  -- куда ходил Andrey\n  SELECT pv.pizzeria_id\n  FROM person_visits pv\n  JOIN person p ON pv.person_id = p.id\n  WHERE p.name = 'Andrey'\n  EXCEPT\n  -- где он делал заказы\n  SELECT m.pizzeria_id\n  FROM person_order po\n  JOIN person p ON po.person_id = p.id\n  JOIN menu m ON po.menu_id = m.id\n  WHERE p.name = 'Andrey'\n)\nORDER BY pizzeria_name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex06",
+      "task": "Найти одинаковые пиццы с одинаковой ценой в разных пиццериях: pizza_name, pizzeria_name_1, pizzeria_name_2, price. Каждая пара — один раз. Сортировка по пицце.",
+      "hint": "Self-join menu с самим собой по названию и цене + pizzeria_id одной стороны больше другой.",
+      "solution": "SELECT m1.pizza_name,\n       pz1.name AS pizzeria_name_1,\n       pz2.name AS pizzeria_name_2,\n       m1.price\nFROM menu m1\nJOIN menu m2\n  ON m1.pizza_name = m2.pizza_name\n AND m1.price = m2.price\n AND m1.pizzeria_id > m2.pizzeria_id\nJOIN pizzeria pz1 ON m1.pizzeria_id = pz1.id\nJOIN pizzeria pz2 ON m2.pizzeria_id = pz2.id\nORDER BY m1.pizza_name;",
+      "language": "sql",
+      "note": "Тот же приём, что в 03/ex10: условие > вместо <> убирает зеркальные пары."
+    },
+    {
+      "id": "ex07",
+      "task": "Добавить в меню пиццерии с id = 2 новую позицию: id = 19, greek pizza, цена 800.",
+      "hint": "INSERT INTO … (колонки) VALUES (…).",
+      "solution": "INSERT INTO menu (id, pizzeria_id, pizza_name, price)\nVALUES (19, 2, 'greek pizza', 800);\n\n-- откат\n-- DELETE FROM menu\n-- WHERE pizza_name = 'greek pizza' AND pizzeria_id = 2;",
+      "language": "sql"
+    },
+    {
+      "id": "ex08",
+      "task": "Добавить в меню Dominos пиццу sicilian pizza за 900. id и pizzeria_id не хардкодить — вычислить подзапросами.",
+      "hint": "id = MAX(id) + 1 из menu, pizzeria_id — по имени пиццерии.",
+      "solution": "INSERT INTO menu (id, pizzeria_id, pizza_name, price)\nVALUES (\n  (SELECT MAX(id) + 1 FROM menu),\n  (SELECT id FROM pizzeria WHERE name = 'Dominos'),\n  'sicilian pizza',\n  900\n);\n\n-- откат\n-- DELETE FROM menu\n-- WHERE pizza_name = 'sicilian pizza'\n--   AND pizzeria_id = (SELECT id FROM pizzeria WHERE name = 'Dominos');",
+      "language": "sql",
+      "note": "MAX(id) + 1 небезопасен при параллельных вставках — две транзакции получат один id. В рабочих таблицах для этого есть SEQUENCE (модуль 08)."
+    },
+    {
+      "id": "ex09",
+      "task": "Добавить визиты Denis и Irina в Dominos 24.02.2022 одним запросом. Ключи и ссылки — подзапросами.",
+      "hint": "Многострочный VALUES. Для второй строки id = MAX(id) + 2.",
+      "solution": "INSERT INTO person_visits (id, person_id, pizzeria_id, visit_date)\nVALUES\n(\n  (SELECT MAX(id) + 1 FROM person_visits),\n  (SELECT id FROM person WHERE name = 'Denis'),\n  (SELECT id FROM pizzeria WHERE name = 'Dominos'),\n  '2022-02-24'\n),\n(\n  (SELECT MAX(id) + 2 FROM person_visits),\n  (SELECT id FROM person WHERE name = 'Irina'),\n  (SELECT id FROM pizzeria WHERE name = 'Dominos'),\n  '2022-02-24'\n);",
+      "language": "sql",
+      "note": "Обе строки вычисляют MAX(id) по таблице до вставки, поэтому вторая строка берёт +2, а не +1."
+    },
+    {
+      "id": "ex10",
+      "task": "Добавить заказы sicilian pizza для Denis и Irina от 24.02.2022 одним запросом. Ключи и ссылки — подзапросами.",
+      "hint": "Как ex09, только таблица person_order и menu_id по названию пиццы.",
+      "solution": "INSERT INTO person_order (id, person_id, menu_id, order_date)\nVALUES\n(\n  (SELECT MAX(id) + 1 FROM person_order),\n  (SELECT id FROM person WHERE name = 'Denis'),\n  (SELECT id FROM menu WHERE pizza_name = 'sicilian pizza'),\n  '2022-02-24'\n),\n(\n  (SELECT MAX(id) + 2 FROM person_order),\n  (SELECT id FROM person WHERE name = 'Irina'),\n  (SELECT id FROM menu WHERE pizza_name = 'sicilian pizza'),\n  '2022-02-24'\n);",
+      "language": "sql"
+    },
+    {
+      "id": "ex11",
+      "task": "Снизить цену greek pizza на 10%.",
+      "hint": "UPDATE … SET price = price * …",
+      "solution": "UPDATE menu\nSET price = price * 0.9\nWHERE pizza_name = 'greek pizza';",
+      "language": "sql"
+    },
+    {
+      "id": "ex12",
+      "task": "Одним запросом создать заказ greek pizza от 25.02.2022 для каждого клиента. id заказов — подряд после текущего максимума.",
+      "hint": "INSERT … SELECT. generate_series(1, количество клиентов) даёт номера 1..N для id.",
+      "solution": "INSERT INTO person_order (id, person_id, menu_id, order_date)\nSELECT (SELECT MAX(id) FROM person_order) + gs,\n       p.id,\n       (SELECT id FROM menu WHERE pizza_name = 'greek pizza'),\n       '2022-02-25'\nFROM person p,\n     generate_series(1, (SELECT COUNT(*) FROM person)) AS gs\nWHERE p.id = gs;",
+      "language": "sql",
+      "note": "Решение опирается на то, что id клиентов идут подряд с 1. Если будет пропуск (например, клиента 5 удалили), часть клиентов не получит заказ. Без этой зависимости: MAX(id) + ROW_NUMBER() OVER (ORDER BY p.id) — оконные функции будут в модуле 08."
+    },
+    {
+      "id": "ex13",
+      "task": "Удалить все заказы из ex12 и позицию greek pizza из меню.",
+      "hint": "Подумай о порядке: на greek pizza ссылаются заказы через внешний ключ.",
+      "solution": "DELETE FROM person_order\nWHERE order_date = '2022-02-25';\n\nDELETE FROM menu\nWHERE pizza_name = 'greek pizza';",
+      "language": "sql",
+      "note": "Сначала дочерние строки (person_order), потом родительские (menu). В обратном порядке второй DELETE упадёт с violates foreign key constraint."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Что сделает запрос UPDATE menu SET price = price * 0.9; (без WHERE)?",
+      "options": [
+        "Ничего — без WHERE UPDATE не выполняется",
+        "Выдаст ошибку синтаксиса",
+        "Снизит цену всех позиций меню на 10%",
+        "Изменит только первую строку"
+      ],
+      "correctIndex": 2,
+      "explanation": "UPDATE и DELETE без WHERE применяются ко всем строкам таблицы. Перед запуском проверяй условие через SELECT … WHERE или работай в BEGIN … ROLLBACK."
+    },
+    {
+      "id": "q2",
+      "question": "На greek pizza есть заказы в person_order (внешний ключ menu_id → menu). Что будет при DELETE FROM menu WHERE pizza_name = 'greek pizza'?",
+      "options": [
+        "Ошибка violates foreign key constraint — сначала нужно удалить заказы",
+        "Удалится пицца, у заказов menu_id станет NULL",
+        "Удалятся и пицца, и все её заказы",
+        "Удалится пицца, заказы останутся со ссылкой в никуда"
+      ],
+      "correctIndex": 0,
+      "explanation": "По умолчанию внешний ключ запрещает удалять строку, на которую есть ссылки. Каскадное удаление или SET NULL нужно явно указать при создании FK (ON DELETE CASCADE / SET NULL)."
+    },
+    {
+      "id": "q3",
+      "question": "Чем плох INSERT … VALUES ((SELECT MAX(id) + 1 FROM menu), …) в рабочей системе?",
+      "options": [
+        "MAX нельзя использовать внутри VALUES",
+        "Он медленнее обычного INSERT в 10 раз",
+        "Он не работает с bigint",
+        "Две параллельные транзакции могут получить одинаковый id"
+      ],
+      "correctIndex": 3,
+      "explanation": "Обе транзакции читают один и тот же MAX(id) до того, как другая закоммитит вставку. Вторая упадёт на уникальности ключа. Для генерации id используют SEQUENCE или GENERATED AS IDENTITY."
+    },
+    {
+      "id": "q4",
+      "question": "Пиццерию X женщины посетили 3 раза, мужчины — 1 раз. Сколько раз X будет в результате «визиты женщин EXCEPT ALL визиты мужчин»?",
+      "options": ["0", "2", "3", "1"],
+      "correctIndex": 1,
+      "explanation": "EXCEPT ALL вычитает по количеству: 3 − 1 = 2. Обычный EXCEPT вернул бы 0 — он проверяет только наличие."
+    }
+  ]
+}

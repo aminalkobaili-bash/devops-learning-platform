@@ -1,0 +1,133 @@
+{
+  "id": "03-outer-joins-cte",
+  "theoryFile": "03-outer-joins-cte.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Вывести название (pizzeria_name) и рейтинг пиццерий, которые никто не посещал. Нельзя использовать IN, EXISTS и операции над множествами.",
+      "hint": "LEFT JOIN к person_visits и фильтр на NULL в правой таблице.",
+      "solution": "SELECT name AS pizzeria_name, rating\nFROM pizzeria p\nLEFT JOIN person_visits pv ON p.id = pv.pizzeria_id\nWHERE pv.pizzeria_id IS NULL;",
+      "language": "sql"
+    },
+    {
+      "id": "ex01",
+      "task": "Вывести даты с 01.01.2022 по 10.01.2022 (колонка missing_date), в которые ни клиент с id = 1, ни клиент с id = 2 не посещали пиццерии. Сортировка по дате.",
+      "hint": "generate_series для календаря + LEFT JOIN. Фильтр по person_id — в ON, а не в WHERE.",
+      "solution": "-- способ 1: одно соединение, оба клиента в ON\nSELECT d.visit_date::date AS missing_date\nFROM generate_series('2022-01-01'::date, '2022-01-10'::date, '1 day') AS d(visit_date)\nLEFT JOIN person_visits pv\n  ON d.visit_date = pv.visit_date AND (pv.person_id = 1 OR pv.person_id = 2)\nWHERE pv.visit_date IS NULL\nORDER BY missing_date;\n\n-- способ 2: отдельное соединение на каждого клиента\nSELECT d.visit_date::date AS missing_date\nFROM generate_series('2022-01-01'::date, '2022-01-10'::date, '1 day') AS d(visit_date)\nLEFT JOIN person_visits pv1\n  ON d.visit_date = pv1.visit_date AND pv1.person_id = 1\nLEFT JOIN person_visits pv2\n  ON d.visit_date = pv2.visit_date AND pv2.person_id = 2\nWHERE pv1.visit_date IS NULL\n  AND pv2.visit_date IS NULL\nORDER BY missing_date;",
+      "language": "sql",
+      "note": "Оба способа дают одинаковый результат. Во втором явно видно условие «отсутствуют оба»."
+    },
+    {
+      "id": "ex02",
+      "task": "Вывести клиентов (person_name), даты визитов и пиццерии (pizzeria_name) за 01–03.01.2022, включая клиентов без визитов и пиццерии без визитов за этот период. NULL в именах заменить на '-'. Сортировка по person_name, visit_date, pizzeria_name.",
+      "hint": "Два FULL JOIN: person ↔ визиты ↔ pizzeria. Фильтр по датам — внутри подзапроса.",
+      "solution": "SELECT COALESCE(p.name, '-') AS person_name,\n       pv.visit_date,\n       COALESCE(pi.name, '-') AS pizzeria_name\nFROM person p\nFULL JOIN (\n  SELECT *\n  FROM person_visits\n  WHERE visit_date BETWEEN '2022-01-01' AND '2022-01-03'\n) pv\n  ON p.id = pv.person_id\nFULL JOIN pizzeria pi\n  ON pi.id = pv.pizzeria_id\nORDER BY person_name, pv.visit_date, pizzeria_name;",
+      "language": "sql",
+      "note": "Если перенести BETWEEN в общий WHERE, строки с visit_date = NULL отсеются, и FULL JOIN потеряет смысл."
+    },
+    {
+      "id": "ex03",
+      "task": "Переписать ex01 через CTE (WITH).",
+      "hint": "Весь запрос поиска дат — внутрь WITH, снаружи — SELECT и ORDER BY.",
+      "solution": "WITH d AS (\n  SELECT d.visit_date::date AS missing_date\n  FROM generate_series('2022-01-01'::date, '2022-01-10'::date, '1 day') AS d(visit_date)\n  LEFT JOIN person_visits pv1\n    ON d.visit_date = pv1.visit_date AND pv1.person_id = 1\n  LEFT JOIN person_visits pv2\n    ON d.visit_date = pv2.visit_date AND pv2.person_id = 2\n  WHERE pv1.visit_date IS NULL\n    AND pv2.visit_date IS NULL\n)\nSELECT *\nFROM d\nORDER BY missing_date;",
+      "language": "sql",
+      "note": "Имя CTE d совпадает с алиасом generate_series внутри — это работает, но читать легче с разными именами, например WITH missing AS (…)."
+    },
+    {
+      "id": "ex04",
+      "task": "Вывести пиццы, в названии которых есть pepperoni или mushroom, с названием пиццерии (pizzeria_name) и ценой. Сортировка по пицце, затем по пиццерии.",
+      "hint": "JOIN menu с pizzeria + LIKE '%…%'.",
+      "solution": "SELECT m.pizza_name, p.name AS pizzeria_name, m.price\nFROM menu m\nINNER JOIN pizzeria p ON m.pizzeria_id = p.id\nWHERE m.pizza_name LIKE '%pepperoni%'\n   OR m.pizza_name LIKE '%mushroom%'\nORDER BY m.pizza_name, p.name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex05",
+      "task": "Вывести имена всех женщин старше 25 лет, по алфавиту.",
+      "hint": "Простой WHERE с двумя условиями.",
+      "solution": "SELECT name\nFROM person\nWHERE gender = 'female' AND age > 25\nORDER BY name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex06",
+      "task": "Вывести названия пицц и пиццерий (pizzeria_name) из всех заказов Anna и Denis. Сортировка по пицце, затем по пиццерии.",
+      "hint": "Цепочка JOIN: person_order → person, → menu, → pizzeria.",
+      "solution": "SELECT m.pizza_name, pz.name AS pizzeria_name\nFROM person_order po\nJOIN person p ON po.person_id = p.id\nJOIN menu m ON po.menu_id = m.id\nJOIN pizzeria pz ON m.pizzeria_id = pz.id\nWHERE p.name = 'Anna' OR p.name = 'Denis'\nORDER BY m.pizza_name, pz.name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex07",
+      "task": "Найти пиццерию, которую Dmitriy посетил 08.01.2022 и в которой есть пицца дешевле 800.",
+      "hint": "person_visits → person, → pizzeria, pizzeria → menu. Три условия в WHERE.",
+      "solution": "SELECT pz.name AS pizzeria_name\nFROM person_visits pv\nJOIN person p ON pv.person_id = p.id\nJOIN pizzeria pz ON pv.pizzeria_id = pz.id\nJOIN menu m ON pz.id = m.pizzeria_id\nWHERE p.name = 'Dmitriy'\n  AND pv.visit_date = '2022-01-08'\n  AND m.price < 800;",
+      "language": "sql",
+      "note": "Если в пиццерии несколько пицц дешевле 800, её название повторится — по строке на каждую позицию меню. От этого защищает DISTINCT."
+    },
+    {
+      "id": "ex08",
+      "task": "Вывести имена мужчин из Moscow или Samara, которые заказывали pepperoni pizza или mushroom pizza. Без повторов, по убыванию имени.",
+      "hint": "JOIN person → person_order → menu, IN для списков значений, DISTINCT.",
+      "solution": "SELECT DISTINCT p.name\nFROM person p\nJOIN person_order po ON p.id = po.person_id\nJOIN menu m ON po.menu_id = m.id\nWHERE p.gender = 'male'\n  AND p.address IN ('Moscow', 'Samara')\n  AND m.pizza_name IN ('pepperoni pizza', 'mushroom pizza')\nORDER BY p.name DESC;",
+      "language": "sql"
+    },
+    {
+      "id": "ex09",
+      "task": "Вывести имена женщин, которые заказывали и cheese pizza, и pepperoni pizza. По алфавиту.",
+      "hint": "Одна строка не может одновременно быть cheese и pepperoni. Присоедини person_order и menu дважды: m1 для cheese, m2 для pepperoni.",
+      "solution": "SELECT DISTINCT p.name\nFROM person p\nJOIN person_order po1 ON p.id = po1.person_id\nJOIN menu m1 ON po1.menu_id = m1.id\nJOIN person_order po2 ON p.id = po2.person_id\nJOIN menu m2 ON po2.menu_id = m2.id\nWHERE p.gender = 'female'\n  AND m1.pizza_name = 'cheese pizza'\n  AND m2.pizza_name = 'pepperoni pizza'\nORDER BY p.name;",
+      "language": "sql",
+      "note": "Частая ошибка — WHERE m.pizza_name = 'cheese pizza' AND m.pizza_name = 'pepperoni pizza' на одной таблице: такое условие не выполняется ни для одной строки."
+    },
+    {
+      "id": "ex10",
+      "task": "Вывести пары клиентов с одинаковым адресом: person_name1, person_name2, common_address. Каждая пара — один раз. Сортировка по всем трём колонкам.",
+      "hint": "Self-join person p1 с person p2 по address. Условие на id убирает дубли.",
+      "solution": "SELECT p1.name AS person_name1,\n       p2.name AS person_name2,\n       p1.address AS common_address\nFROM person p1\nJOIN person p2\n  ON p1.address = p2.address\nWHERE p1.id > p2.id\nORDER BY person_name1, person_name2, common_address;",
+      "language": "sql"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Запрос: person LEFT JOIN person_visits pv ON … WHERE pv.pizzeria_id = 1. Что произойдёт с клиентами без визитов?",
+      "options": [
+        "Останутся, у них pv.* будет NULL",
+        "Запрос упадёт с ошибкой",
+        "Останутся, но только если у них есть заказы",
+        "Пропадут: WHERE отбросит строки с NULL, и LEFT JOIN станет INNER JOIN"
+      ],
+      "correctIndex": 3,
+      "explanation": "WHERE применяется после соединения. NULL = 1 не true, поэтому строки без пары отсеиваются. Чтобы сохранить их, условие нужно перенести в ON."
+    },
+    {
+      "id": "q2",
+      "question": "Что вернёт COALESCE(NULL, NULL, 'x', 'y')?",
+      "options": ["'x'", "'y'", "NULL", "'xy'"],
+      "correctIndex": 0,
+      "explanation": "COALESCE возвращает первый аргумент, который не NULL."
+    },
+    {
+      "id": "q3",
+      "question": "Self-join person p1 JOIN person p2 ON p1.address = p2.address. Зачем условие p1.id > p2.id, а не p1.id <> p2.id?",
+      "options": [
+        "<> не работает с bigint",
+        "> работает быстрее за счёт индекса",
+        "С <> каждая пара выводится дважды: (A, B) и (B, A)",
+        "Разницы нет"
+      ],
+      "correctIndex": 2,
+      "explanation": "<> убирает только пары «сам с собой». > оставляет из (A, B) и (B, A) ровно одну — ту, где id первого больше."
+    },
+    {
+      "id": "q4",
+      "question": "Совпадёт ли 'Pepperoni Pizza' с условием pizza_name LIKE '%pepperoni%'?",
+      "options": [
+        "Да, LIKE не учитывает регистр",
+        "Нет, LIKE чувствителен к регистру — нужен ILIKE или lower()",
+        "Да, но только в PostgreSQL",
+        "Нет, % не совпадает с пробелом"
+      ],
+      "correctIndex": 1,
+      "explanation": "LIKE сравнивает с учётом регистра. В PostgreSQL для поиска без учёта регистра есть ILIKE."
+    }
+  ]
+}

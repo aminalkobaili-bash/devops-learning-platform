@@ -1,0 +1,16 @@
+{
+  "id": "linux-networking",
+  "title": "Linux Networking",
+  "description": "Сеть из пяти VM на Ubuntu Server 20.04 (два роутера, три хоста) и отдельный стенд из двух узлов: статическая маршрутизация, фаервол iptables, DHCP, SNAT/DNAT, SSH-туннели. Каждый шаг проверен трафиком.",
+  "stack": ["iproute2", "Netplan", "sysctl", "iptables", "isc-dhcp-server", "tcpdump", "traceroute", "iperf3", "nmap", "OpenSSH", "ipcalc"],
+  "repo": "https://github.com/aminalkobaili-bash/linux-networking",
+  "modules": [
+    { "id": "01-addressing", "order": 1, "title": "IP-адресация и подсети", "level": "beginner", "topics": ["CIDR", "маска", "ipcalc", "частные сети"] },
+    { "id": "02-static-routing", "order": 2, "title": "Статическая маршрутизация между двумя хостами", "level": "beginner", "topics": ["ip route", "netplan routes", "iperf3"] },
+    { "id": "03-iptables-basics", "order": 3, "title": "Фаервол iptables: цепочки и порядок правил", "level": "intermediate", "topics": ["INPUT", "OUTPUT", "первое совпадение", "nmap"] },
+    { "id": "04-multi-node-routing", "order": 4, "title": "Маршрутизация через роутеры", "level": "intermediate", "topics": ["ip_forward", "longest prefix", "traceroute", "tcpdump"] },
+    { "id": "05-dhcp", "order": 5, "title": "DHCP-сервер", "level": "intermediate", "topics": ["DORA", "isc-dhcp-server", "аренда", "резервирование по MAC"] },
+    { "id": "06-nat", "order": 6, "title": "NAT и пограничный фаервол", "level": "advanced", "topics": ["FORWARD DROP", "conntrack", "MASQUERADE", "DNAT"] },
+    { "id": "07-ssh-tunnels", "order": 7, "title": "SSH-туннели", "level": "advanced", "topics": ["ssh -L", "ssh -R", "localhost", "port forwarding"] }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "id": "04-game-minimax",
+  "theoryFile": "04-game-minimax.md",
+  "practice": [
+    {
+      "id": "field-validate",
+      "task": "Сделать dataclass GameField, который не создаётся, если поле не 3×3 или в клетках что-то кроме 0, 1, 2.",
+      "hint": "@dataclass и проверка в __post_init__.",
+      "solution": "from dataclasses import dataclass\n\n@dataclass\nclass GameField:\n    matrix: list[list[int]]\n\n    def __post_init__(self):\n        if len(self.matrix) != 3:\n            raise ValueError(\"Field must be 3x3\")\n        if any(len(row) != 3 for row in self.matrix):\n            raise ValueError(\"Field must be 3x3\")\n        for row in self.matrix:\n            for cell in row:\n                if cell not in (0, 1, 2):\n                    raise ValueError(\"Cell values must be 0, 1 or 2\")",
+      "language": "python",
+      "note": "Из domain/model/field.py."
+    },
+    {
+      "id": "validate-move",
+      "task": "Проверить ход: по сравнению со старым полем изменилась ровно одна пустая клетка и в неё поставлен ожидаемый символ.",
+      "hint": "Двойной цикл по клеткам, счётчик изменений.",
+      "solution": "changes = 0\nfor r in range(3):\n    for c in range(3):\n        if old[r][c] != new[r][c]:\n            if old[r][c] != 0 or new[r][c] != expected_symbol:\n                raise InvalidMoveError(f\"Invalid change at ({r},{c})\")\n            changes += 1\nif changes != 1:\n    raise InvalidMoveError(\"Exactly one move required\")",
+      "language": "python",
+      "note": "Из GameServiceImpl._validate_move."
+    },
+    {
+      "id": "winner",
+      "task": "Написать функцию, которая возвращает символ победителя (1 или 2) или 0, проверив все 8 линий.",
+      "hint": "3 строки + 3 столбца + 2 диагонали; линия выигрышная, если все клетки равны и не 0.",
+      "solution": "def winner(f):\n    lines = [row[:] for row in f]\n    lines += [[f[0][c], f[1][c], f[2][c]] for c in range(3)]\n    lines.append([f[0][0], f[1][1], f[2][2]])\n    lines.append([f[0][2], f[1][1], f[2][0]])\n    for line in lines:\n        if line[0] != 0 and len(set(line)) == 1:\n            return line[0]\n    return 0",
+      "language": "python",
+      "note": "Логика из _determine_status."
+    },
+    {
+      "id": "minimax",
+      "task": "Написать minimax для крестиков-ноликов: компьютер — 2 (максимизирует), человек — 1 (минимизирует), быстрая победа ценнее.",
+      "hint": "Терминальные оценки 10 − depth / −10 + depth / 0; рекурсия по пустым клеткам с чередованием max и min.",
+      "solution": "def minimax(f, depth, is_max):\n    w = winner(f)\n    if w == 2:\n        return 10 - depth\n    if w == 1:\n        return -10 + depth\n    empty = [(r, c) for r in range(3) for c in range(3) if f[r][c] == 0]\n    if not empty:\n        return 0\n    scores = []\n    for r, c in empty:\n        f2 = [row[:] for row in f]\n        f2[r][c] = 2 if is_max else 1\n        scores.append(minimax(f2, depth + 1, not is_max))\n    return max(scores) if is_max else min(scores)",
+      "language": "python",
+      "note": "Компактная версия _minimax из проекта."
+    },
+    {
+      "id": "best-move",
+      "task": "Выбрать лучший ход компьютера: для каждой пустой клетки поставить 2 и оценить позицию, когда дальше ходит человек.",
+      "hint": "Перебор пустых клеток, minimax(..., depth=0, is_max=False), максимум оценки.",
+      "solution": "def best_move(f):\n    best_score, best = -float(\"inf\"), None\n    for r in range(3):\n        for c in range(3):\n            if f[r][c] == 0:\n                f2 = [row[:] for row in f]\n                f2[r][c] = 2\n                score = minimax(f2, 0, False)\n                if score > best_score:\n                    best_score, best = score, (r, c)\n    return best",
+      "language": "python",
+      "note": "Аналог get_next_move."
+    },
+    {
+      "id": "play-api",
+      "task": "Через API создать игру против компьютера, походить в центр и посмотреть ответный ход.",
+      "hint": "POST /games с game_type=computer, затем POST /game/<uuid> с полным полем.",
+      "solution": "GAME=$(curl -s -X POST $API/games -H \"Authorization: Bearer $ACCESS\" \\\n  -H 'Content-Type: application/json' -d '{\"game_type\":\"computer\"}' | jq -r .uuid)\n\ncurl -s -X POST $API/game/$GAME -H \"Authorization: Bearer $ACCESS\" \\\n  -H 'Content-Type: application/json' -d '{\"field\":[[0,0,0],[0,1,0],[0,0,0]]}'",
+      "language": "bash",
+      "note": "Из docs/api-examples.md. В ответе уже будет двойка компьютера — в углу."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему сервер сравнивает присланное поле со своим, а не просто сохраняет его?",
+      "options": [
+        "Так быстрее",
+        "Клиенту нельзя доверять: он может прислать поле с несколькими ходами, ходом за соперника или стёртыми клетками",
+        "Это требование JSON",
+        "Чтобы экономить место в БД"
+      ],
+      "correctIndex": 1,
+      "explanation": "Состояние — на сервере. От клиента принимается только намерение, и сервер проверяет, что оно допустимо."
+    },
+    {
+      "id": "q2",
+      "question": "Зачем в оценке minimax 10 − depth, а не просто 10?",
+      "options": [
+        "Чтобы компьютер предпочитал более быструю победу (и оттягивал неизбежный проигрыш)",
+        "Чтобы избежать бесконечной рекурсии",
+        "Чтобы оценка не превышала 10",
+        "Так меньше потребляется памяти"
+      ],
+      "correctIndex": 0,
+      "explanation": "Без глубины все выигрышные ходы равноценны, и компьютер может «тянуть» партию, имея победу в один ход."
+    },
+    {
+      "id": "q3",
+      "question": "Каким может быть результат партии против minimax проекта при любой игре человека?",
+      "options": [
+        "Любым",
+        "Только победа компьютера",
+        "Победа человека, если он ходит первым",
+        "Победа компьютера или ничья"
+      ],
+      "correctIndex": 3,
+      "explanation": "Полный перебор всех стратегий: 0 побед человека, 386 побед компьютера, 183 ничьи."
+    },
+    {
+      "id": "q4",
+      "question": "Почему полный minimax не подойдёт для поля 4×4?",
+      "options": [
+        "Python не поддерживает рекурсию глубже 9",
+        "minimax работает только для 3×3",
+        "Число вариантов растёт факториально (15! ≈ 1.3 трлн) — нужны alpha-beta отсечения и ограничение глубины",
+        "Нужна другая формула победы"
+      ],
+      "correctIndex": 2,
+      "explanation": "Alpha-beta отбрасывает ветки, которые заведомо не повлияют на выбор, и сокращает перебор на порядки."
+    }
+  ]
+}

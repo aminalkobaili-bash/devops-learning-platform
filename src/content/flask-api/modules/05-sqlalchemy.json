@@ -1,0 +1,104 @@
+{
+  "id": "05-sqlalchemy",
+  "theoryFile": "05-sqlalchemy.md",
+  "practice": [
+    {
+      "id": "engine-base",
+      "task": "Настроить подключение SQLAlchemy 2.0: engine, фабрику сессий и базовый класс моделей в новом стиле.",
+      "hint": "create_engine, sessionmaker, class Base(DeclarativeBase).",
+      "solution": "from sqlalchemy import create_engine\nfrom sqlalchemy.orm import DeclarativeBase, sessionmaker\nfrom config import DATABASE_URL\n\nengine = create_engine(DATABASE_URL, echo=False)\nSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)\n\nclass Base(DeclarativeBase):\n    pass",
+      "language": "python",
+      "note": "Из database.py. До ревью было Base = declarative_base()."
+    },
+    {
+      "id": "user-model",
+      "task": "Описать ORM-модель users: uuid (PK, генерируется), уникальный обязательный login, обязательный password.",
+      "hint": "Column с PG_UUID(as_uuid=True), String, unique, nullable.",
+      "solution": "from uuid import uuid4\nfrom sqlalchemy import Column, String\nfrom sqlalchemy.dialects.postgresql import UUID\nfrom database import Base\n\nclass User(Base):\n    __tablename__ = \"users\"\n\n    uuid = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)\n    login = Column(String, unique=True, nullable=False)\n    password = Column(String, nullable=False)",
+      "language": "python",
+      "note": "В password хранится хеш scrypt (модуль 06), а не пароль."
+    },
+    {
+      "id": "save-pattern",
+      "task": "Написать метод сохранения с правильной обработкой сессии: commit, rollback при ошибке, close всегда.",
+      "hint": "try / except / finally, исключение пробросить дальше.",
+      "solution": "def save(self, game: Game) -> None:\n    session = self.session_factory()\n    try:\n        orm_game = session.query(ORMGame).filter(ORMGame.uuid == game.uuid).first()\n        if orm_game:\n            orm_game.field_matrix = game.field.matrix\n            orm_game.status = game.status\n            # … остальные поля\n        else:\n            session.add(game_to_orm(game))\n        session.commit()\n    except Exception:\n        session.rollback()\n        raise\n    finally:\n        session.close()",
+      "language": "python",
+      "note": "Из PostgresGameRepository.save."
+    },
+    {
+      "id": "select-2",
+      "task": "Переписать поиск игры по uuid из legacy Query API в стиль SQLAlchemy 2.0.",
+      "hint": "select() + session.scalars() или session.get().",
+      "solution": "from sqlalchemy import select\n\n# было\norm_game = session.query(ORMGame).filter(ORMGame.uuid == uuid).first()\n\n# стало\norm_game = session.scalars(select(ORMGame).where(ORMGame.uuid == uuid)).first()\n# или по первичному ключу\norm_game = session.get(ORMGame, uuid)",
+      "language": "python",
+      "note": "Пункт future work из README."
+    },
+    {
+      "id": "history-query",
+      "task": "Выбрать завершённые игры пользователя (WON или DRAW), где он первый или второй игрок.",
+      "hint": "| для OR между условиями, .in_() для списка статусов.",
+      "solution": "query = session.query(ORMGame).filter(\n    (ORMGame.player1_uuid == user_uuid) | (ORMGame.player2_uuid == user_uuid)\n)\nquery = query.filter(ORMGame.status.in_([GameStatus.WON, GameStatus.DRAW]))\norm_games = query.all()",
+      "language": "python",
+      "note": "Из list_finished_by_user. Python-оператор or здесь не сработает — нужен | или or_()."
+    },
+    {
+      "id": "utc",
+      "task": "Заменить устаревший datetime.utcnow() и сделать колонку created_at с часовым поясом.",
+      "hint": "datetime.now(timezone.utc), DateTime(timezone=True).",
+      "solution": "from datetime import datetime, timezone\n\ncreated_at = datetime.now(timezone.utc)\n\n# ORM\ncreated_at = Column(DateTime(timezone=True), nullable=False)",
+      "language": "python",
+      "note": "Исправлено после ревью: в Python 3.12 utcnow() даёт DeprecationWarning."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "В модель добавили новую колонку. Появится ли она в существующей таблице после перезапуска с Base.metadata.create_all()?",
+      "options": [
+        "Да, create_all синхронизирует схему",
+        "Да, но только в PostgreSQL",
+        "Нет — create_all создаёт только отсутствующие таблицы; для изменений нужны миграции (Alembic)",
+        "Нет, и приложение не запустится"
+      ],
+      "correctIndex": 2,
+      "explanation": "Поэтому README требует пересоздать базу после изменения created_at. Отсутствие миграций — в списке future work."
+    },
+    {
+      "id": "q2",
+      "question": "Зачем session.rollback() в блоке except при сохранении?",
+      "options": [
+        "Чтобы отменить незавершённую транзакцию — иначе сессия останется в сломанном состоянии",
+        "Чтобы повторить запрос",
+        "Чтобы закрыть соединение",
+        "Это нужно только для SQLite"
+      ],
+      "correctIndex": 0,
+      "explanation": "После ошибки в транзакции PostgreSQL не примет новые команды до ROLLBACK. close() в finally затем вернёт соединение в пул."
+    },
+    {
+      "id": "q3",
+      "question": "Почему в фильтре SQLAlchemy пишут (A == x) | (B == x), а не (A == x) or (B == x)?",
+      "options": [
+        "or медленнее",
+        "| — синтаксис SQL",
+        "Это одно и то же",
+        "Python-оператор or нельзя перегрузить: он вернёт один из операндов, а не SQL-выражение OR"
+      ],
+      "correctIndex": 3,
+      "explanation": "SQLAlchemy перегружает |, & и ~. Альтернатива — функции or_(), and_(), not_()."
+    },
+    {
+      "id": "q4",
+      "question": "Чем datetime.now(timezone.utc) лучше datetime.utcnow()?",
+      "options": [
+        "Он быстрее",
+        "Он возвращает aware datetime с часовым поясом; utcnow() — naive и в Python 3.12 deprecated",
+        "Он учитывает летнее время",
+        "Разницы нет"
+      ],
+      "correctIndex": 1,
+      "explanation": "Naive datetime неотличим от местного времени. Вместе с колонкой timestamp with time zone это исправление после ревью."
+    }
+  ]
+}

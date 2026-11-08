@@ -1,0 +1,16 @@
+{
+  "id": "flask-api",
+  "title": "Flask Tic-Tac-Toe API",
+  "description": "REST API для крестиков-ноликов: игра против компьютера (minimax) и между пользователями, JWT access/refresh, PostgreSQL через SQLAlchemy 2.0, история и рейтинг одним SQL-запросом. Слоистая архитектура web / domain / datasource.",
+  "stack": ["Python 3.12", "Flask 3.1", "flask-jwt-extended", "SQLAlchemy 2.0", "psycopg 3", "PostgreSQL", "Werkzeug (scrypt)", "python-dotenv"],
+  "repo": "https://github.com/aminalkobaili-bash/flask-tictactoe-api",
+  "modules": [
+    { "id": "01-rest-flask", "order": 1, "title": "REST API на Flask", "level": "beginner", "topics": ["маршруты", "JSON", "HTTP-коды", "app factory"] },
+    { "id": "02-config", "order": 2, "title": "Конфигурация, секреты и запуск", "level": "beginner", "topics": [".env", "os.environ", "debug", "gunicorn"] },
+    { "id": "03-architecture", "order": 3, "title": "Слоистая архитектура и DI", "level": "intermediate", "topics": ["web / domain / datasource", "DTO", "мапперы", "DI-контейнер"] },
+    { "id": "04-game-minimax", "order": 4, "title": "Логика игры и minimax", "level": "intermediate", "topics": ["валидация хода", "победа / ничья", "minimax", "глубина"] },
+    { "id": "05-sqlalchemy", "order": 5, "title": "PostgreSQL через SQLAlchemy 2.0", "level": "intermediate", "topics": ["DeclarativeBase", "Session", "ORM ↔ domain", "Alembic"] },
+    { "id": "06-auth-jwt", "order": 6, "title": "Пароли и JWT", "level": "advanced", "topics": ["scrypt", "access / refresh", "claim type", "blocklist"] },
+    { "id": "07-leaderboard-sql", "order": 7, "title": "Рейтинг: агрегация в SQL", "level": "advanced", "topics": ["UNION ALL", "SUM(CASE)", "NULL", "CAST"] }
+  ]
+}

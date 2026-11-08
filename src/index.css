@@ -1,0 +1,68 @@
+:root {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --text: #1c1917;
+  --muted: #78716c;
+  --border: #e7e5e4;
+  --accent: #0d9488;
+  --accent-soft: #ccfbf1;
+  --success: #16a34a;
+  --error: #dc2626;
+  --code-bg: #f5f5f4;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  --radius: 10px;
+  --gutter: 16px;
+  --content-width: 860px;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0a09;
+    --surface: #1c1917;
+    --text: #f5f5f4;
+    --muted: #a8a29e;
+    --border: #292524;
+    --accent: #2dd4bf;
+    --accent-soft: #134e4a;
+    --success: #4ade80;
+    --error: #f87171;
+    --code-bg: #1c1917;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  /* показываем >= и <> как есть, без склейки в ≥ и ≠ */
+  font-variant-ligatures: none;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+}

@@ -1,0 +1,99 @@
+{
+  "id": "03-fastcgi",
+  "theoryFile": "03-fastcgi.md",
+  "practice": [
+    {
+      "id": "server-c",
+      "task": "Написать FastCGI-сервер на C, который на любой запрос отдаёт HTML «Hello, World!».",
+      "hint": "fcgi_stdio.h, цикл while (FCGI_Accept() >= 0), заголовок Content-type и пустая строка.",
+      "solution": "#include <fcgi_stdio.h>\n\nint main() {\n    while (FCGI_Accept() >= 0) {\n        printf(\"Content-type: text/html\\r\\n\\r\\n\");\n        printf(\"<html><head><title>Hello, World!</title></head>\");\n        printf(\"<body><h1>Hello, World!</h1></body></html>\");\n    }\n    return 0;\n}",
+      "language": "c",
+      "note": "Упрощённая версия app/server.c."
+    },
+    {
+      "id": "uri",
+      "task": "Доработать сервер: выводить в странице путь запроса, а для пути, отличного от /, отдавать 404.",
+      "hint": "getenv(\"REQUEST_URI\"), strcmp, заголовок Status: 404 Not Found.",
+      "solution": "#include <fcgi_stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\nint main() {\n    while (FCGI_Accept() >= 0) {\n        const char *uri = getenv(\"REQUEST_URI\");\n        if (uri && strcmp(uri, \"/\") != 0) {\n            printf(\"Status: 404 Not Found\\r\\n\");\n            printf(\"Content-type: text/plain\\r\\n\\r\\n\");\n            printf(\"Not found: %s\\n\", uri);\n            continue;\n        }\n        printf(\"Content-type: text/html\\r\\n\\r\\n\");\n        printf(\"<h1>Hello, World!</h1>\");\n    }\n    return 0;\n}",
+      "language": "c",
+      "note": "Задачи нет в проекте — закрывает ограничение «/anything → 200» из README."
+    },
+    {
+      "id": "build",
+      "task": "Скомпилировать сервер с оптимизацией и библиотекой libfcgi.",
+      "hint": "gcc, -O2, -o, -l.",
+      "solution": "apt-get install -y gcc libc6-dev libfcgi-dev\ngcc -O2 -o server server.c -lfcgi",
+      "language": "bash",
+      "note": "Как в builder-стадии Dockerfile."
+    },
+    {
+      "id": "spawn",
+      "task": "Запустить сервер как FastCGI-процесс на 127.0.0.1:8080.",
+      "hint": "spawn-fcgi -a -p -f.",
+      "solution": "spawn-fcgi -a 127.0.0.1 -p 8080 -f /server/server",
+      "language": "bash",
+      "note": "Из docker/entrypoint.sh."
+    },
+    {
+      "id": "nginx-fastcgi",
+      "task": "Настроить nginx на порту 81 так, чтобы все запросы шли в FastCGI-процесс на 127.0.0.1:8080.",
+      "hint": "location / с fastcgi_pass и include fastcgi_params.",
+      "solution": "server {\n    listen 81;\n    server_name localhost;\n\n    location / {\n        fastcgi_pass 127.0.0.1:8080;\n        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n        include /etc/nginx/fastcgi_params;\n    }\n}",
+      "language": "nginx",
+      "note": "Из nginx/fastcgi-gateway.conf."
+    },
+    {
+      "id": "healthcheck-fix",
+      "task": "Исправить HEALTHCHECK так, чтобы контейнер становился unhealthy, если упал FastCGI-сервер.",
+      "hint": "Проверять путь, который обслуживает FastCGI, а не stub_status nginx.",
+      "solution": "HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \\\n    CMD curl -f http://127.0.0.1:81/ || exit 1",
+      "language": "dockerfile",
+      "note": "Найдено при подготовке модуля: проверка /status отвечает 200, даже когда /server/server не работает. Проверить: docker exec fastcgi-server pkill server; curl localhost/ → 502."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Чем FastCGI выгоднее классического CGI?",
+      "options": [
+        "Процесс приложения живёт постоянно и обрабатывает запросы в цикле, а не запускается заново на каждый запрос",
+        "FastCGI шифрует трафик",
+        "FastCGI работает только с C",
+        "CGI не поддерживается nginx"
+      ],
+      "correctIndex": 0,
+      "explanation": "fork + exec на каждый запрос — главный тормоз CGI. Тот же принцип у PHP-FPM, gunicorn, uWSGI."
+    },
+    {
+      "id": "q2",
+      "question": "HEALTHCHECK проверяет curl :81/status. FastCGI-процесс упал. Что покажет docker ps?",
+      "options": [
+        "unhealthy",
+        "Контейнер перезапустится",
+        "healthy — /status отдаёт nginx, FastCGI в проверке не участвует; при этом / вернёт 502",
+        "exited"
+      ],
+      "correctIndex": 2,
+      "explanation": "Healthcheck должен проверять то, ради чего контейнер существует. Найдено при подготовке модуля."
+    },
+    {
+      "id": "q3",
+      "question": "Зачем в ответе сервера после Content-type: text/html стоит \\r\\n\\r\\n?",
+      "options": [
+        "Для красоты вывода",
+        "Это конец файла",
+        "Так требует компилятор",
+        "Пустая строка отделяет заголовки ответа от тела"
+      ],
+      "correctIndex": 3,
+      "explanation": "Как в HTTP: заголовки, пустая строка, тело. Без неё веб-сервер считает HTML продолжением заголовков."
+    },
+    {
+      "id": "q4",
+      "question": "Какой пакет нужен для компиляции server.c, но не нужен для его запуска?",
+      "options": ["libfcgi0t64", "libfcgi-dev (заголовки)", "spawn-fcgi", "nginx"],
+      "correctIndex": 1,
+      "explanation": "-dev пакеты содержат заголовки и статические файлы для сборки. Поэтому они остаются в builder-стадии, а в runtime — только libfcgi0t64."
+    }
+  ]
+}

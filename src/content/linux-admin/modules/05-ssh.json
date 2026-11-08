@@ -1,0 +1,97 @@
+{
+  "id": "05-ssh",
+  "theoryFile": "05-ssh.md",
+  "practice": [
+    {
+      "id": "status",
+      "task": "Проверить, что служба SSH запущена.",
+      "hint": "systemctl status для службы ssh.",
+      "solution": "systemctl status ssh",
+      "language": "bash",
+      "note": "Ищи строку Active: active (running)."
+    },
+    {
+      "id": "enable",
+      "task": "Сделать так, чтобы SSH запускался при каждой загрузке системы.",
+      "hint": "Не start, а другая команда systemctl.",
+      "solution": "sudo systemctl enable ssh\nsystemctl is-enabled ssh",
+      "language": "bash"
+    },
+    {
+      "id": "port",
+      "task": "Перенести sshd на порт 2022 и перезапустить службу, предварительно проверив синтаксис конфига.",
+      "hint": "Отредактировать /etc/ssh/sshd_config: раскомментировать Port и поменять значение. Проверка — sshd -t.",
+      "solution": "sudo nano /etc/ssh/sshd_config\n# было:  #Port 22\n# стало: Port 2022\nsudo sshd -t\nsudo systemctl restart ssh",
+      "language": "bash",
+      "note": "Изменение из репозитория: configs/ssh/sshd_config.diff. sshd -t в проекте не использовался, но это хорошая привычка перед restart."
+    },
+    {
+      "id": "process",
+      "task": "Найти процесс sshd в списке процессов.",
+      "hint": "ps + grep.",
+      "solution": "ps aux | grep sshd",
+      "language": "bash"
+    },
+    {
+      "id": "listen",
+      "task": "Перезагрузить сервер и убедиться, что sshd слушает порт 2022 на IPv4 и IPv6.",
+      "hint": "reboot, затем список слушающих TCP-сокетов.",
+      "solution": "sudo reboot\n# после загрузки:\nnetstat -tan | grep 2022\n# современный аналог:\nsudo ss -tlnp | grep 2022",
+      "language": "bash",
+      "note": "В проекте: 0.0.0.0:2022 LISTEN и :::2022 LISTEN."
+    },
+    {
+      "id": "connect",
+      "task": "Подключиться к серверу по новому порту с хост-машины.",
+      "hint": "Флаг -p у ssh. При NAT в VirtualBox нужен проброс порта в настройках VM.",
+      "solution": "ssh -p 2022 amuser2@10.0.2.50",
+      "language": "bash",
+      "note": "Адрес 10.0.2.50 доступен только изнутри NAT-сети VirtualBox. С хоста — через проброс порта (например, хост 2222 → гость 2022) и ssh -p 2222 amuser2@127.0.0.1."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Служба в состоянии active, но disabled. Что будет после перезагрузки?",
+      "options": [
+        "Запустится, раз сейчас работает",
+        "Не запустится — enable/disable управляет автозапуском",
+        "Запустится, но с ошибкой",
+        "Система не загрузится"
+      ],
+      "correctIndex": 1,
+      "explanation": "start/stop — состояние сейчас, enable/disable — поведение при загрузке. Это независимые вещи."
+    },
+    {
+      "id": "q2",
+      "question": "В каком файле меняют порт SSH-сервера?",
+      "options": ["/etc/ssh/ssh_config", "/etc/services", "/etc/ssh/sshd_config", "~/.ssh/config"],
+      "correctIndex": 2,
+      "explanation": "sshd_config — сервер (d = daemon). ssh_config и ~/.ssh/config — настройки клиента ssh."
+    },
+    {
+      "id": "q3",
+      "question": "Защищает ли перенос SSH с порта 22 на 2022 от взлома?",
+      "options": [
+        "Нет: уменьшает шум автоматических атак, но сканер найдёт порт. Защищают ключи вместо паролей, запрет root, fail2ban",
+        "Да, нестандартный порт невозможно найти",
+        "Да, если порт больше 1024",
+        "Нет, и шум в логах тоже не уменьшается"
+      ],
+      "correctIndex": 0,
+      "explanation": "Это «безопасность через неясность». Полезно против массовых ботов, но не замена PasswordAuthentication no и PermitRootLogin no."
+    },
+    {
+      "id": "q4",
+      "question": "Что означает 0.0.0.0:2022 LISTEN в выводе ss / netstat?",
+      "options": [
+        "Порт закрыт",
+        "Подключиться можно только с localhost",
+        "Порт открыт для одного IP 0.0.0.0",
+        "Процесс слушает порт 2022 на всех IPv4-адресах сервера"
+      ],
+      "correctIndex": 3,
+      "explanation": "0.0.0.0 — «все интерфейсы». Если бы было 127.0.0.1:2022, подключиться можно было бы только с самого сервера."
+    }
+  ]
+}

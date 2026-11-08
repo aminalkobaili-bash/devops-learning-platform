@@ -1,0 +1,106 @@
+{
+  "id": "08-constraints",
+  "theoryFile": "08-constraints.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Создать таблицу person_discounts: id (bigint, первичный ключ), person_id, pizzeria_id (bigint), discount (numeric). Добавить именованные внешние ключи на person и pizzeria.",
+      "hint": "CONSTRAINT fk_<таблица>_<колонка> FOREIGN KEY (…) REFERENCES …(id). DROP TABLE IF EXISTS — для перезапуска.",
+      "solution": "DROP TABLE IF EXISTS person_discounts;\n\nCREATE TABLE person_discounts (\n  id bigint PRIMARY KEY,\n  person_id bigint,\n  pizzeria_id bigint,\n  discount numeric,\n  CONSTRAINT fk_person_discounts_person_id FOREIGN KEY (person_id) REFERENCES person(id),\n  CONSTRAINT fk_person_discounts_pizzeria_id FOREIGN KEY (pizzeria_id) REFERENCES pizzeria(id)\n);\n\nSELECT * FROM person_discounts;",
+      "language": "sql"
+    },
+    {
+      "id": "ex01",
+      "task": "Заполнить person_discounts одним запросом: для каждой пары (клиент, пиццерия) посчитать число заказов. 1 заказ → 10.5, 2 заказа → 22, больше → 30. id — порядковый номер строки.",
+      "hint": "INSERT … SELECT с GROUP BY po.person_id, m.pizzeria_id. Скидка — CASE по COUNT(*). id — ROW_NUMBER() OVER ().",
+      "solution": "INSERT INTO person_discounts (id, person_id, pizzeria_id, discount)\nSELECT ROW_NUMBER() OVER () AS id,\n       po.person_id,\n       m.pizzeria_id,\n       CASE\n         WHEN COUNT(*) = 1 THEN 10.5\n         WHEN COUNT(*) = 2 THEN 22\n         ELSE 30\n       END AS discount\nFROM person_order po\nJOIN menu m ON po.menu_id = m.id\nGROUP BY po.person_id, m.pizzeria_id;",
+      "language": "sql",
+      "note": "pizzeria_id берётся из menu: в person_order его нет, связь заказа с пиццерией идёт через позицию меню. ROW_NUMBER() — то, что в 04/ex12 заменило бы зависимость от сплошной нумерации клиентов."
+    },
+    {
+      "id": "ex02",
+      "task": "Для всех заказов вывести имя клиента, пиццу, цену, цену со скидкой (discount_price, целым числом) и пиццерию. Сортировка по имени и пицце.",
+      "hint": "К цепочке person_order → person → menu → pizzeria добавь person_discounts по паре (person_id, pizzeria_id).",
+      "solution": "SELECT p.name,\n       m.pizza_name,\n       m.price,\n       (m.price - (m.price * pd.discount / 100))::INT AS discount_price,\n       pz.name AS pizzeria_name\nFROM person_order po\nJOIN person p ON po.person_id = p.id\nJOIN menu m ON po.menu_id = m.id\nJOIN pizzeria pz ON m.pizzeria_id = pz.id\nJOIN person_discounts pd\n  ON pd.person_id = p.id\n AND pd.pizzeria_id = pz.id\nORDER BY p.name, m.pizza_name;",
+      "language": "sql",
+      "note": "JOIN по двум колонкам сразу: скидка зависит и от клиента, и от пиццерии. Проверено на тестовых данных: 900 при 22% → 702, 800 при 10.5% → 716, 800 при 30% → 560."
+    },
+    {
+      "id": "ex03",
+      "task": "Создать уникальный индекс idx_person_discounts_unique на (person_id, pizzeria_id) и показать план поиска по этой паре.",
+      "hint": "CREATE UNIQUE INDEX + EXPLAIN ANALYZE с enable_seqscan = off.",
+      "solution": "DROP INDEX IF EXISTS idx_person_discounts_unique;\n\nCREATE UNIQUE INDEX idx_person_discounts_unique ON person_discounts (person_id, pizzeria_id);\n\nSET enable_seqscan = OFF;\n\nEXPLAIN ANALYZE\nSELECT *\nFROM person_discounts\nWHERE person_id = 1 AND pizzeria_id = 2;",
+      "language": "sql",
+      "note": "Индекс заодно гарантирует бизнес-правило: у клиента не может быть двух разных скидок в одной пиццерии."
+    },
+    {
+      "id": "ex04",
+      "task": "Добавить именованные ограничения: person_id, pizzeria_id и discount не NULL (ch_nn_*), discount по умолчанию 0, discount от 0 до 100 (ch_range_discount). Скрипт должен быть перезапускаемым.",
+      "hint": "Сначала DROP CONSTRAINT IF EXISTS и DROP DEFAULT, потом ADD CONSTRAINT … CHECK (…) и SET DEFAULT.",
+      "solution": "ALTER TABLE person_discounts DROP CONSTRAINT IF EXISTS ch_nn_person_id;\nALTER TABLE person_discounts DROP CONSTRAINT IF EXISTS ch_nn_pizzeria_id;\nALTER TABLE person_discounts DROP CONSTRAINT IF EXISTS ch_nn_discount;\nALTER TABLE person_discounts DROP CONSTRAINT IF EXISTS ch_range_discount;\nALTER TABLE person_discounts ALTER COLUMN discount DROP DEFAULT;\n\nALTER TABLE person_discounts ADD CONSTRAINT ch_nn_person_id CHECK (person_id IS NOT NULL);\nALTER TABLE person_discounts ADD CONSTRAINT ch_nn_pizzeria_id CHECK (pizzeria_id IS NOT NULL);\nALTER TABLE person_discounts ADD CONSTRAINT ch_nn_discount CHECK (discount IS NOT NULL);\n\nALTER TABLE person_discounts ALTER COLUMN discount SET DEFAULT 0;\n\nALTER TABLE person_discounts ADD CONSTRAINT ch_range_discount CHECK (discount BETWEEN 0 AND 100);",
+      "language": "sql",
+      "note": "ch_nn_discount нужен отдельно: CHECK (discount BETWEEN 0 AND 100) пропускает NULL — условие даёт NULL, а не false."
+    },
+    {
+      "id": "ex05",
+      "task": "Добавить комментарии к таблице person_discounts и ко всем её колонкам. Вывести комментарии колонок запросом.",
+      "hint": "COMMENT ON TABLE / COMMENT ON COLUMN. Чтение — col_description(regclass, номер колонки) по information_schema.columns.",
+      "solution": "COMMENT ON TABLE person_discounts IS\n'Table storing personal discount rates for each person in each pizzeria';\n\nCOMMENT ON COLUMN person_discounts.id IS\n'Primary key of the table';\n\nCOMMENT ON COLUMN person_discounts.person_id IS\n'Reference to the person who receives the discount';\n\nCOMMENT ON COLUMN person_discounts.pizzeria_id IS\n'Reference to the pizzeria where the discount is applied';\n\nCOMMENT ON COLUMN person_discounts.discount IS\n'Discount percentage for a person in a specific pizzeria';\n\nSELECT c.column_name,\n       col_description('person_discounts'::regclass, c.ordinal_position) AS comment\nFROM information_schema.columns c\nWHERE c.table_name = 'person_discounts';",
+      "language": "sql",
+      "note": "В твоём файле перед этим стоят COMMENT ON … IS NULL — они сбрасывают старые комментарии. Повторный COMMENT ON и так перезаписывает значение, так что для перезапуска они не обязательны."
+    },
+    {
+      "id": "ex06",
+      "task": "Создать последовательность seq_person_discounts, сделать её значением по умолчанию для id и сдвинуть так, чтобы новые строки не конфликтовали с существующими.",
+      "hint": "CREATE SEQUENCE, ALTER COLUMN id SET DEFAULT nextval(…), setval(…).",
+      "solution": "ALTER TABLE person_discounts ALTER COLUMN id DROP DEFAULT;\nDROP SEQUENCE IF EXISTS seq_person_discounts;\n\nCREATE SEQUENCE seq_person_discounts START 1;\n\nALTER TABLE person_discounts\nALTER COLUMN id SET DEFAULT nextval('seq_person_discounts');\n\nSELECT setval(\n  'seq_person_discounts',\n  (SELECT COUNT(*) + 1 FROM person_discounts)\n);",
+      "language": "sql",
+      "note": "Проверено на PostgreSQL 16: при 3 строках setval(…, 4) — следующий nextval вернёт 5, а не 4: setval(n) означает «последнее выданное = n». Конфликта нет, но один номер пропускается. Точнее: setval('seq_person_discounts', (SELECT MAX(id) FROM person_discounts)). MAX надёжнее COUNT, если в id есть пропуски."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "На колонке discount только CHECK (discount BETWEEN 0 AND 100). Что будет при INSERT с discount = NULL?",
+      "options": [
+        "Ошибка: NULL не входит в диапазон",
+        "Строка вставится — CHECK отклоняет только false, а NULL BETWEEN … даёт NULL",
+        "discount автоматически станет 0",
+        "Строка вставится, но с предупреждением"
+      ],
+      "correctIndex": 1,
+      "explanation": "CHECK пропускает строку, если условие true или NULL. Поэтому в ex04 есть отдельное ограничение ch_nn_discount (или SET NOT NULL)."
+    },
+    {
+      "id": "q2",
+      "question": "Выполнили SELECT setval('s', 5). Что вернёт следующий nextval('s')?",
+      "options": ["5", "1", "4", "6"],
+      "correctIndex": 3,
+      "explanation": "setval(s, n) помечает n как уже выданное, следующий nextval вернёт n + 1. Чтобы следующим было именно n — setval(s, n, false)."
+    },
+    {
+      "id": "q3",
+      "question": "В транзакции вызвали nextval('s') — получили 7, затем ROLLBACK. Что вернёт следующий nextval('s')?",
+      "options": [
+        "8 — последовательность не откатывается, 7 потеряно",
+        "7 — значение вернулось при откате",
+        "1 — последовательность сбросилась",
+        "Ошибку — последовательность заблокирована"
+      ],
+      "correctIndex": 0,
+      "explanation": "Последовательности нетранзакционны: иначе параллельным транзакциям пришлось бы ждать друг друга. Поэтому в id бывают пропуски — это нормально."
+    },
+    {
+      "id": "q4",
+      "question": "В таблице есть строка с discount = 150. Что будет при ALTER TABLE … ADD CONSTRAINT ch CHECK (discount BETWEEN 0 AND 100)?",
+      "options": [
+        "Ограничение добавится и будет действовать только для новых строк",
+        "Строка с 150 будет удалена",
+        "Ошибка — существующая строка нарушает ограничение, оно не добавится",
+        "discount = 150 будет обрезан до 100"
+      ],
+      "correctIndex": 2,
+      "explanation": "PostgreSQL проверяет все существующие строки при добавлении CHECK. Проверить только новые можно с NOT VALID, а старые — позже командой VALIDATE CONSTRAINT."
+    }
+  ]
+}

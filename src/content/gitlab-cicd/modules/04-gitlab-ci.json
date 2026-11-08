@@ -1,0 +1,102 @@
+{
+  "id": "04-gitlab-ci",
+  "theoryFile": "04-gitlab-ci.md",
+  "practice": [
+    {
+      "id": "stages",
+      "task": "Объявить пять стадий пайплайна в нужном порядке: сборка, стиль, тесты, деплой, уведомления.",
+      "hint": "Ключ stages: — список.",
+      "solution": "stages:\n  - build\n  - style\n  - test\n  - deploy\n  - notify",
+      "language": "yaml"
+    },
+    {
+      "id": "build-job",
+      "task": "Написать job сборки: выполняется на runner с тегом build, собирает утилиту и сохраняет app/DO как артефакт на 30 дней.",
+      "hint": "stage, tags, script, artifacts: paths + expire_in.",
+      "solution": "build_job:\n  stage: build\n  tags:\n    - build\n  script:\n    - cd app && make\n  artifacts:\n    paths:\n      - app/DO\n    expire_in: 30 days",
+      "language": "yaml",
+      "note": "Из .gitlab-ci.yml."
+    },
+    {
+      "id": "test-job",
+      "task": "Написать job тестов, который использует бинарник из стадии build.",
+      "hint": "Артефакты предыдущих стадий скачиваются автоматически.",
+      "solution": "test_job:\n  stage: test\n  tags:\n    - test\n  script:\n    - python3 tests/test_integration.py",
+      "language": "yaml"
+    },
+    {
+      "id": "register",
+      "task": "Зарегистрировать runner с shell executor и тегами build, style, test, deploy, bot и проверить, что он онлайн.",
+      "hint": "gitlab-runner register, затем verify и systemctl status.",
+      "solution": "sudo gitlab-runner register\n# URL: https://gitlab.example.com\n# token: из Settings → CI/CD → Runners\n# executor: shell\n# tags: build,style,test,deploy,bot\n\nsudo gitlab-runner verify\nsystemctl status gitlab-runner",
+      "language": "bash",
+      "note": "В проекте: gitlab-runner 19.3.2 на Ubuntu Server 24.04. Интерактивные вопросы register зависят от версии."
+    },
+    {
+      "id": "needs",
+      "task": "Запустить проверку стиля сразу, не дожидаясь сборки.",
+      "hint": "needs: [] — job не зависит от предыдущих стадий.",
+      "solution": "style_job:\n  stage: style\n  needs: []\n  tags:\n    - style\n  script:\n    - bash scripts/style.sh",
+      "language": "yaml",
+      "note": "Задачи нет в проекте. Ошибка стиля обнаружится за секунды, параллельно с компиляцией."
+    },
+    {
+      "id": "notify-jobs",
+      "task": "Сделать два job уведомлений: один выполняется, если все предыдущие стадии успешны, другой — если что-то упало.",
+      "hint": "when: on_success и when: on_failure.",
+      "solution": "notify_ci_success:\n  stage: notify\n  tags:\n    - bot\n  script:\n    - bash scripts/notify.sh \"CI passed for ${CI_COMMIT_SHORT_SHA} on ${CI_COMMIT_BRANCH}.\"\n  when: on_success\n\nnotify_ci_failure:\n  stage: notify\n  tags:\n    - bot\n  script:\n    - bash scripts/notify.sh \"CI failed for ${CI_COMMIT_SHORT_SHA}. Check: ${CI_PIPELINE_URL}\"\n  when: on_failure",
+      "language": "yaml",
+      "note": "Из .gitlab-ci.yml, текст сообщений сокращён."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Как выполняются jobs внутри одной стадии и сами стадии?",
+      "options": [
+        "Jobs стадии — параллельно, стадии — последовательно",
+        "Всё последовательно",
+        "Всё параллельно",
+        "Jobs — последовательно, стадии — параллельно"
+      ],
+      "correctIndex": 0,
+      "explanation": "Следующая стадия начинается, когда завершились все jobs предыдущей. needs позволяет строить DAG и не ждать всю стадию."
+    },
+    {
+      "id": "q2",
+      "question": "Как test_job получает бинарник app/DO, собранный в build_job?",
+      "options": [
+        "Пересобирает его заново",
+        "Через общий каталог на runner",
+        "Скачивает артефакты предыдущих стадий автоматически",
+        "Через git"
+      ],
+      "correctIndex": 2,
+      "explanation": "Поэтому тестируется и деплоится ровно тот бинарник, что собран в build."
+    },
+    {
+      "id": "q3",
+      "question": "У job указаны tags: [deploy]. На каком runner он выполнится?",
+      "options": [
+        "На любом свободном",
+        "На shared runner GitLab",
+        "Job выполнится без runner",
+        "Только на runner, у которого есть тег deploy"
+      ],
+      "correctIndex": 3,
+      "explanation": "Если такого runner нет, job будет висеть в pending. В проекте один runner со всеми пятью тегами."
+    },
+    {
+      "id": "q4",
+      "question": "Главный риск shell executor?",
+      "options": [
+        "Он медленнее docker",
+        "Job выполняется прямо в ОС runner: любой job имеет доступ ко всему, что есть у пользователя gitlab-runner, включая SSH-ключи",
+        "Он не поддерживает артефакты",
+        "Он работает только на Windows"
+      ],
+      "correctIndex": 1,
+      "explanation": "Подробно — в модуле 07: в проекте это открывает путь к prod-серверу из любой ветки."
+    }
+  ]
+}

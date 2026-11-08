@@ -1,0 +1,98 @@
+{
+  "id": "06-custom-exporter",
+  "theoryFile": "06-custom-exporter.md",
+  "practice": [
+    {
+      "id": "reproduce-bug",
+      "task": "Воспроизвести баг исходного экспортера: подать в awk строку top при 100% простое и посмотреть, что получится в $8.",
+      "hint": "printf со строкой %Cpu(s) … 0.0 ni,100.0 id и awk '{print $8, 100-$8}'.",
+      "solution": "printf '%%Cpu(s):  0.0 us,  0.0 sy,  0.0 ni,100.0 id,  0.0 wa\\n' | awk '{print \"$8=\" $8, \"cpu=\" 100-$8}'\n# $8=id, cpu=100",
+      "language": "bash",
+      "note": "Проверено: $8 = \"id,\", результат 100. Со строкой «0.0 ni, 97.6 id» получится $8=97.6, cpu=2.4."
+    },
+    {
+      "id": "read-cpu",
+      "task": "Написать функцию, которая выводит из /proc/stat два числа: суммарное время CPU и время простоя (idle + iowait).",
+      "hint": "awk по строке, начинающейся с «cpu »: поля $2…$9.",
+      "solution": "read_cpu() {\n    awk '/^cpu / {total = $2+$3+$4+$5+$6+$7+$8+$9; idle = $5+$6; print total, idle}' /proc/stat\n}\nread_cpu",
+      "language": "bash",
+      "note": "Пробел в /^cpu / важен: без него совпадут и строки cpu0, cpu1… по отдельным ядрам."
+    },
+    {
+      "id": "cpu-delta",
+      "task": "Посчитать загрузку CPU в процентах за 3 секунды по двум снимкам /proc/stat.",
+      "hint": "Снимок → sleep 3 → снимок; (Δtotal − Δidle) × 100 / Δtotal в awk.",
+      "solution": "read -r T1 I1 < <(read_cpu)\nsleep 3\nread -r T2 I2 < <(read_cpu)\n\nawk -v dt=$((T2 - T1)) -v di=$((I2 - I1)) \\\n  'BEGIN { if (dt > 0) printf \"%.1f\\n\", (dt - di) * 100 / dt; else print 0 }'",
+      "language": "bash",
+      "note": "Исправленная логика из metrics-exporter.sh. Проверка: в простое ≈ 0, под stress — до 100."
+    },
+    {
+      "id": "exposition",
+      "task": "Записать метрику custom_cpu_usage в файл в формате Prometheus с HELP и TYPE.",
+      "hint": "heredoc: # HELP, # TYPE gauge, строка «имя значение».",
+      "solution": "cat << EOF > /var/www/html/metrics\n# HELP custom_cpu_usage CPU usage\n# TYPE custom_cpu_usage gauge\ncustom_cpu_usage $CPU_USAGE\nEOF\n\ncurl -s localhost/metrics",
+      "language": "bash"
+    },
+    {
+      "id": "atomic",
+      "task": "Переделать запись так, чтобы Prometheus никогда не прочитал наполовину записанный файл.",
+      "hint": "Писать во временный файл и переименовывать.",
+      "solution": "OUTPUT=/var/www/html/metrics\n\ncat << EOF > \"$OUTPUT.tmp\"\n# HELP custom_cpu_usage CPU usage\n# TYPE custom_cpu_usage gauge\ncustom_cpu_usage $CPU_USAGE\nEOF\n\nmv \"$OUTPUT.tmp\" \"$OUTPUT\"",
+      "language": "bash",
+      "note": "Недочёт 1 из README. mv на той же ФС атомарен."
+    },
+    {
+      "id": "systemd-unit",
+      "task": "Оформить экспортер как службу systemd, которая стартует при загрузке и перезапускается при падении.",
+      "hint": "Unit-файл в /etc/systemd/system/: ExecStart, Restart=always, WantedBy=multi-user.target.",
+      "solution": "sudo cp metrics-exporter.sh /usr/local/bin/\nsudo tee /etc/systemd/system/metrics-exporter.service > /dev/null << 'EOF'\n[Unit]\nDescription=Custom Bash metrics exporter\nAfter=network.target\n\n[Service]\nExecStart=/usr/local/bin/metrics-exporter.sh\nRestart=always\n\n[Install]\nWantedBy=multi-user.target\nEOF\n\nsudo systemctl daemon-reload\nsudo systemctl enable --now metrics-exporter",
+      "language": "bash",
+      "note": "Этого в проекте нет — экспортер запускался как foreground-цикл (недочёт 1 из README)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему исходный экспортер показывал 100% CPU в полном простое?",
+      "options": [
+        "top неверно считает загрузку",
+        "Строка «0.0 ni,100.0 id» без пробела: awk-поле $8 стало «id,», а 100 − «id,» = 100 − 0",
+        "/proc/stat не обновлялся",
+        "Prometheus неправильно усреднил значения"
+      ],
+      "correctIndex": 1,
+      "explanation": "Разбор по пробелам сломался из-за форматирования числа 100.0. Отсюда правило: не парсить вывод для человека."
+    },
+    {
+      "id": "q2",
+      "question": "Почему загрузку CPU считают по разнице двух снимков /proc/stat, а не по одному?",
+      "options": [
+        "Один снимок читается слишком долго",
+        "Так требует Prometheus",
+        "Разница убирает ошибки округления",
+        "Значения в /proc/stat накоплены с момента загрузки — загрузка за интервал видна только по приращению"
+      ],
+      "correctIndex": 3,
+      "explanation": "Один снимок даёт среднюю загрузку с момента включения сервера. Это тот же принцип, что rate() над counter в Prometheus."
+    },
+    {
+      "id": "q3",
+      "question": "Скрипт пишет метрики через cat << EOF > metrics. В чём риск?",
+      "options": [
+        "> сначала обнуляет файл — Prometheus может прочитать его пустым или наполовину записанным",
+        "heredoc не поддерживает переменные",
+        "nginx заблокирует файл",
+        "Рисков нет"
+      ],
+      "correctIndex": 0,
+      "explanation": "Решение — писать в metrics.tmp и делать mv: переименование на одной ФС атомарно."
+    },
+    {
+      "id": "q4",
+      "question": "Как по конвенции Prometheus назвать метрику свободного места на диске?",
+      "options": ["custom_disk_free_kb", "customDiskFree", "custom_disk_free_bytes", "disk_free_total"],
+      "correctIndex": 2,
+      "explanation": "snake_case, базовые единицы (байты, секунды), единица — суффиксом. _total — только для counter, а свободное место — gauge."
+    }
+  ]
+}

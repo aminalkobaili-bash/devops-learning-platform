@@ -1,0 +1,121 @@
+{
+  "id": "09-aggregation",
+  "theoryFile": "09-aggregation.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Вывести person_id и число визитов (count_of_visits) для каждого клиента. Сортировка: по числу визитов по убыванию, затем по person_id.",
+      "hint": "COUNT(*) + GROUP BY person_id.",
+      "solution": "SELECT person_id, COUNT(*) AS count_of_visits\nFROM person_visits\nGROUP BY person_id\nORDER BY count_of_visits DESC, person_id ASC;",
+      "language": "sql"
+    },
+    {
+      "id": "ex01",
+      "task": "Вывести топ-4 клиента по числу визитов: имя и count_of_visits. При равенстве — по имени.",
+      "hint": "JOIN с person, GROUP BY по имени, ORDER BY + LIMIT.",
+      "solution": "SELECT p.name, COUNT(*) AS count_of_visits\nFROM person_visits pv\nJOIN person p ON pv.person_id = p.id\nGROUP BY p.name\nORDER BY count_of_visits DESC, p.name ASC\nLIMIT 4;",
+      "language": "sql",
+      "note": "Без p.name в ORDER BY при равном числе визитов в топ попадали бы случайные клиенты."
+    },
+    {
+      "id": "ex02",
+      "task": "Вывести топ-3 пиццерии по визитам и топ-3 по заказам одним списком: name, count, action_type ('visit' / 'order'). Сортировка: по action_type, затем по count по убыванию.",
+      "hint": "Каждый топ-3 — в своём подзапросе с ORDER BY и LIMIT. Подзапросы склеить UNION ALL.",
+      "solution": "SELECT *\nFROM (\n  SELECT pz.name, COUNT(*) AS count, 'visit' AS action_type\n  FROM pizzeria pz\n  JOIN person_visits pv ON pz.id = pv.pizzeria_id\n  GROUP BY pz.name\n  ORDER BY count DESC\n  LIMIT 3\n) v\n\nUNION ALL\n\nSELECT *\nFROM (\n  SELECT pz.name, COUNT(*) AS count, 'order' AS action_type\n  FROM pizzeria pz\n  JOIN menu m ON pz.id = m.pizzeria_id\n  JOIN person_order po ON m.id = po.menu_id\n  GROUP BY pz.name\n  ORDER BY count DESC\n  LIMIT 3\n) o\n\nORDER BY action_type ASC, count DESC;",
+      "language": "sql",
+      "note": "Без подзапросов (SELECT … LIMIT 3 UNION ALL SELECT …) PostgreSQL выдаёт синтаксическую ошибку: ORDER BY и LIMIT можно писать только в конце всего UNION."
+    },
+    {
+      "id": "ex03",
+      "task": "Для каждой пиццерии вывести сумму визитов и заказов (total_count). Не терять пиццерии, у которых есть только визиты или только заказы. Сортировка по total_count по убыванию, затем по имени.",
+      "hint": "Два агрегата в подзапросах, затем FULL JOIN по имени и COALESCE(…, 0) для отсутствующей стороны.",
+      "solution": "-- способ 1: FULL JOIN\nSELECT COALESCE(v.name, o.name) AS name,\n       COALESCE(v.visit_count, 0) + COALESCE(o.order_count, 0) AS total_count\nFROM (\n  SELECT pz.name, COUNT(*) AS visit_count\n  FROM pizzeria pz\n  JOIN person_visits pv ON pz.id = pv.pizzeria_id\n  GROUP BY pz.name\n) v\nFULL JOIN (\n  SELECT pz.name, COUNT(*) AS order_count\n  FROM pizzeria pz\n  JOIN menu m ON pz.id = m.pizzeria_id\n  JOIN person_order po ON m.id = po.menu_id\n  GROUP BY pz.name\n) o\nON v.name = o.name\nORDER BY total_count DESC, name ASC;\n\n-- способ 2: UNION ALL + SUM\nSELECT name, SUM(count) AS total_count\nFROM (\n  SELECT pz.name, COUNT(*) AS count\n  FROM pizzeria pz\n  JOIN person_visits pv ON pz.id = pv.pizzeria_id\n  GROUP BY pz.name\n  UNION ALL\n  SELECT pz.name, COUNT(*) AS count\n  FROM pizzeria pz\n  JOIN menu m ON pz.id = m.pizzeria_id\n  JOIN person_order po ON m.id = po.menu_id\n  GROUP BY pz.name\n) t\nGROUP BY name\nORDER BY total_count DESC, name ASC;",
+      "language": "sql",
+      "note": "Способ 2 у тебя в файле закомментирован. Оба дают одинаковый результат. Во втором не нужен COALESCE: пиццерия без заказов просто не даст строку во второй части."
+    },
+    {
+      "id": "ex04",
+      "task": "Вывести имена клиентов, у которых больше 3 визитов, и число их визитов. WHERE не использовать.",
+      "hint": "Условие на агрегат — HAVING.",
+      "solution": "SELECT p.name, COUNT(*) AS count_of_visits\nFROM person p\nJOIN person_visits pv ON p.id = pv.person_id\nGROUP BY p.name\nHAVING COUNT(*) > 3;",
+      "language": "sql"
+    },
+    {
+      "id": "ex05",
+      "task": "Вывести уникальные имена клиентов, которые делали заказы, без GROUP BY. По алфавиту.",
+      "hint": "DISTINCT.",
+      "solution": "SELECT DISTINCT p.name\nFROM person p\nJOIN person_order po ON p.id = po.person_id\nORDER BY p.name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex06",
+      "task": "Для каждой пиццерии вывести число заказов, среднюю цену заказанных пицц (2 знака), максимальную и минимальную цену. Сортировка по названию.",
+      "hint": "pizzeria → menu → person_order, GROUP BY pz.name, ROUND(AVG(…), 2).",
+      "solution": "SELECT pz.name,\n       COUNT(*) AS count_of_orders,\n       ROUND(AVG(m.price), 2) AS average_price,\n       MAX(m.price) AS max_price,\n       MIN(m.price) AS min_price\nFROM pizzeria pz\nJOIN menu m ON pz.id = m.pizzeria_id\nJOIN person_order po ON m.id = po.menu_id\nGROUP BY pz.name\nORDER BY pz.name;",
+      "language": "sql",
+      "note": "Среднее считается по заказам, а не по меню: пицца, которую заказали 3 раза, входит в AVG 3 раза."
+    },
+    {
+      "id": "ex07",
+      "task": "Вывести средний рейтинг всех пиццерий (global_rating), округлённый до 4 знаков.",
+      "hint": "Агрегат без GROUP BY — одна строка на всю таблицу.",
+      "solution": "SELECT ROUND(AVG(rating), 4) AS global_rating\nFROM pizzeria;",
+      "language": "sql"
+    },
+    {
+      "id": "ex08",
+      "task": "Вывести число заказов для каждой пары «адрес клиента — пиццерия». Сортировка по адресу и пиццерии.",
+      "hint": "Цепочка JOIN до pizzeria, GROUP BY по двум колонкам.",
+      "solution": "SELECT p.address,\n       pz.name AS name,\n       COUNT(*) AS count_of_orders\nFROM person p\nJOIN person_order po ON p.id = po.person_id\nJOIN menu m ON po.menu_id = m.id\nJOIN pizzeria pz ON m.pizzeria_id = pz.id\nGROUP BY p.address, pz.name\nORDER BY p.address ASC, pz.name ASC;",
+      "language": "sql"
+    },
+    {
+      "id": "ex09",
+      "task": "Для каждого адреса вывести: formula = MAX(age) − MIN(age) / MAX(age), average = средний возраст (оба — 2 знака) и comparison — правда ли, что formula > average.",
+      "hint": "Агрегаты внутри формулы. Деление целых даст 0 — приведи один операнд к NUMERIC.",
+      "solution": "SELECT address,\n       ROUND(MAX(age) - (MIN(age)::NUMERIC / MAX(age)), 2) AS formula,\n       ROUND(AVG(age), 2) AS average,\n       ROUND(MAX(age) - (MIN(age)::NUMERIC / MAX(age)), 2) > ROUND(AVG(age), 2) AS comparison\nFROM person\nGROUP BY address\nORDER BY address;",
+      "language": "sql",
+      "note": "Без ::NUMERIC MIN(age) / MAX(age) почти всегда даёт 0, и formula превращается просто в MAX(age). Алиас formula нельзя использовать в том же SELECT, поэтому выражение повторено."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "В колонке v значения 1, NULL, 3. Что вернут COUNT(*), COUNT(v) и AVG(v)?",
+      "options": ["3, 3, 1.33", "3, 2, 1.33", "2, 2, 2", "3, 2, 2"],
+      "correctIndex": 3,
+      "explanation": "COUNT(*) считает строки (3), COUNT(v) — не-NULL значения (2). AVG пропускает NULL: (1 + 3) / 2 = 2."
+    },
+    {
+      "id": "q2",
+      "question": "Почему WHERE COUNT(*) > 3 вызывает ошибку?",
+      "options": [
+        "WHERE выполняется до группировки, агрегатов ещё нет — нужен HAVING",
+        "COUNT(*) нельзя сравнивать с числом",
+        "Нужно писать COUNT(id), а не COUNT(*)",
+        "WHERE не работает вместе с JOIN"
+      ],
+      "correctIndex": 0,
+      "explanation": "Порядок: FROM → WHERE → GROUP BY → HAVING. Фильтр по агрегату возможен только в HAVING."
+    },
+    {
+      "id": "q3",
+      "question": "age — integer. Что вернёт MIN(age) / MAX(age) для возрастов 13 и 33?",
+      "options": ["0.39", "0.3939…", "0", "Ошибку деления"],
+      "correctIndex": 2,
+      "explanation": "integer / integer — целочисленное деление, дробь отбрасывается. Поэтому в ex09 стоит MIN(age)::NUMERIC."
+    },
+    {
+      "id": "q4",
+      "question": "Нужно по каждой пиццерии сложить число визитов и число заказов. Почему нельзя сделать один запрос pizzeria JOIN person_visits JOIN (menu JOIN person_order) и COUNT(*)?",
+      "options": [
+        "PostgreSQL не разрешает больше трёх JOIN",
+        "Каждый визит соединится с каждым заказом той же пиццерии — COUNT посчитает произведение, а не сумму",
+        "COUNT(*) не работает после JOIN",
+        "Пиццерии без визитов вызовут ошибку"
+      ],
+      "correctIndex": 1,
+      "explanation": "2 визита и 3 заказа одной пиццерии дадут 2 × 3 = 6 строк вместо 5. Поэтому в ex03 каждая метрика считается в отдельном подзапросе, а потом они складываются."
+    }
+  ]
+}

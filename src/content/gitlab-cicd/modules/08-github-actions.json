@@ -1,0 +1,94 @@
+{
+  "id": "08-github-actions",
+  "theoryFile": "08-github-actions.md",
+  "practice": [
+    {
+      "id": "trigger",
+      "task": "Начать workflow: имя CI, запуск на push и pull request, токен только на чтение репозитория.",
+      "hint": "name, on, permissions.",
+      "solution": "name: CI\n\non:\n  push:\n  pull_request:\n\npermissions:\n  contents: read",
+      "language": "yaml"
+    },
+    {
+      "id": "build-job",
+      "task": "Job build: Ubuntu 24.04, checkout, make, загрузка app/DO как артефакта DO на 30 дней с ошибкой, если файла нет.",
+      "hint": "actions/checkout, run, actions/upload-artifact с if-no-files-found.",
+      "solution": "jobs:\n  build:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/checkout@v7\n      - name: Build\n        run: cd app && make\n      - uses: actions/upload-artifact@v7\n        with:\n          name: DO\n          path: app/DO\n          if-no-files-found: error\n          retention-days: 30",
+      "language": "yaml"
+    },
+    {
+      "id": "test-job",
+      "task": "Job test: после build и style скачать артефакт, вернуть бит исполнения и запустить интеграционные тесты.",
+      "hint": "needs: [build, style], download-artifact в каталог app, chmod +x.",
+      "solution": "  test:\n    runs-on: ubuntu-24.04\n    needs: [build, style]\n    steps:\n      - uses: actions/checkout@v7\n      - uses: actions/download-artifact@v8\n        with:\n          name: DO\n          path: app\n      - name: Restore executable bit\n        run: chmod +x app/DO\n      - name: Integration tests\n        run: python3 tests/test_integration.py",
+      "language": "yaml",
+      "note": "Без chmod +x: Permission denied — upload-artifact не сохраняет права."
+    },
+    {
+      "id": "style-job",
+      "task": "Job style: установить clang-format 18, если его нет, и запустить style.sh с этой версией.",
+      "hint": "env на уровне job, command -v || apt-get install.",
+      "solution": "  style:\n    runs-on: ubuntu-24.04\n    needs: build\n    env:\n      CLANG_FORMAT: clang-format-18\n    steps:\n      - uses: actions/checkout@v7\n      - name: Install clang-format 18\n        run: command -v clang-format-18 || (sudo apt-get update && sudo apt-get install -y clang-format-18)\n      - name: Check code style\n        run: bash scripts/style.sh",
+      "language": "yaml",
+      "note": "style от build не зависит — needs: build можно убрать, и проверка стиля пойдёт параллельно сборке."
+    },
+    {
+      "id": "lint",
+      "task": "Проверить workflow линтером перед пушем.",
+      "hint": "actionlint.",
+      "solution": "actionlint .github/workflows/ci.yml",
+      "language": "bash",
+      "note": "В проекте: 0 errors."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "В GitHub Actions у трёх jobs нет needs. Как они выполнятся?",
+      "options": [
+        "Параллельно — порядок и зависимости задаются только через needs",
+        "Последовательно в порядке записи",
+        "Только первый",
+        "В алфавитном порядке"
+      ],
+      "correctIndex": 0,
+      "explanation": "В GitLab порядок задают стадии, в GitHub Actions — needs."
+    },
+    {
+      "id": "q2",
+      "question": "После download-artifact бинарник не запускается: Permission denied. Почему?",
+      "options": [
+        "Артефакт повреждён",
+        "Runner запрещает запуск бинарников",
+        "upload-artifact упаковывает файлы без прав доступа — бит исполнения нужно вернуть chmod +x",
+        "Нужен sudo"
+      ],
+      "correctIndex": 2,
+      "explanation": "Отражено в workflow проекта отдельным шагом Restore executable bit."
+    },
+    {
+      "id": "q3",
+      "question": "Зачем шаг actions/checkout в каждом job?",
+      "options": [
+        "Для кеширования",
+        "Он устанавливает зависимости",
+        "Он проверяет синтаксис",
+        "Каждый job — отдельная чистая VM; без checkout в ней нет файлов репозитория"
+      ],
+      "correctIndex": 3,
+      "explanation": "В GitLab runner клонирует репозиторий автоматически, в GitHub Actions — явным шагом."
+    },
+    {
+      "id": "q4",
+      "question": "Зачем в workflow permissions: contents: read?",
+      "options": [
+        "Чтобы workflow запускался быстрее",
+        "Ограничить права автоматического GITHUB_TOKEN минимально нужными — только чтение репозитория",
+        "Чтобы скрыть логи",
+        "Чтобы запретить push в main"
+      ],
+      "correctIndex": 1,
+      "explanation": "Принцип минимальных привилегий: если в шаг попадёт вредоносный код, он не сможет писать в репозиторий."
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "id": "02-config",
+  "theoryFile": "02-config.md",
+  "practice": [
+    {
+      "id": "venv",
+      "task": "Создать виртуальное окружение, установить зависимости проекта и проверить установленную версию Flask.",
+      "hint": "python -m venv, активация, pip install -r.",
+      "solution": "python -m venv venv\nsource venv/bin/activate        # Windows: venv\\Scripts\\activate\npip install -r requirements.txt\npip show flask | grep Version   # 3.1.3",
+      "language": "bash"
+    },
+    {
+      "id": "env-file",
+      "task": "Подготовить .env из шаблона и сгенерировать стойкий JWT-секрет.",
+      "hint": "cp из .env.example; секрет — модуль secrets.",
+      "solution": "cp .env.example .env\npython -c \"import secrets; print(secrets.token_hex(32))\"\n# вставить результат в JWT_SECRET_KEY, задать пароль в DATABASE_URL",
+      "language": "bash",
+      "note": ".env есть в .gitignore — проверить: git check-ignore .env"
+    },
+    {
+      "id": "config-py",
+      "task": "Написать config.py: загрузить .env, обязательные DATABASE_URL и JWT_SECRET_KEY, сроки жизни токенов 15 минут и 7 дней.",
+      "hint": "load_dotenv(), os.environ[...] без значения по умолчанию, timedelta.",
+      "solution": "from datetime import timedelta\nimport os\nfrom dotenv import load_dotenv\n\nload_dotenv()\n\nDATABASE_URL = os.environ[\"DATABASE_URL\"]\nJWT_SECRET_KEY = os.environ[\"JWT_SECRET_KEY\"]\nJWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)\nJWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)",
+      "language": "python",
+      "note": "Без переменной приложение упадёт с KeyError при старте — так задумано."
+    },
+    {
+      "id": "createdb-run",
+      "task": "Создать базу tictactoe и запустить приложение в debug-режиме локально.",
+      "hint": "createdb, затем FLASK_DEBUG=1 и python main.py из src.",
+      "solution": "createdb tictactoe\ncd src\nFLASK_DEBUG=1 python main.py",
+      "language": "bash",
+      "note": "Таблицы создаст Base.metadata.create_all при старте."
+    },
+    {
+      "id": "gunicorn",
+      "task": "Запустить приложение под gunicorn с 4 воркерами на порту 8000.",
+      "hint": "gunicorn принимает модуль:фабрику().",
+      "solution": "pip install gunicorn\ncd src\ngunicorn -w 4 -b 0.0.0.0:8000 \"main:create_app()\"",
+      "language": "bash",
+      "note": "В проекте не сделано — отмечено в «Ограничениях» README. gunicorn работает только на Linux/macOS."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему в config.py используется os.environ[\"JWT_SECRET_KEY\"], а не os.getenv(\"JWT_SECRET_KEY\", \"dev-secret\")?",
+      "options": [
+        "os.environ работает быстрее",
+        "getenv не поддерживает строки",
+        "Без переменной приложение должно упасть, а не тихо работать с известным секретом из кода",
+        "Так требует flask-jwt-extended"
+      ],
+      "correctIndex": 2,
+      "explanation": "Секрет по умолчанию в публичном репозитории позволяет любому выпускать валидные токены. Это было исправлено после ревью."
+    },
+    {
+      "id": "q2",
+      "question": "Чем опасен app.run(debug=True) на сервере?",
+      "options": [
+        "Интерактивный отладчик Werkzeug позволяет выполнить произвольный код на сервере",
+        "Приложение работает медленнее",
+        "Не пишутся логи",
+        "Debug отключает JWT"
+      ],
+      "correctIndex": 0,
+      "explanation": "При исключении отладчик даёт консоль Python прямо в браузере. Поэтому в проекте debug включается только переменной FLASK_DEBUG=1."
+    },
+    {
+      "id": "q3",
+      "question": "В окружении задана DATABASE_URL, и она же есть в .env с другим значением. Что возьмёт load_dotenv()?",
+      "options": [
+        "Значение из .env",
+        "Ошибка конфликта",
+        "Склеит оба значения",
+        "Значение из окружения — load_dotenv по умолчанию не перезаписывает существующие переменные"
+      ],
+      "correctIndex": 3,
+      "explanation": "Поведение по умолчанию override=False. Так переменные, заданные systemd или Docker, важнее локального файла."
+    },
+    {
+      "id": "q4",
+      "question": "Почему app.run() не используют в продакшене?",
+      "options": [
+        "Он не поддерживает JSON",
+        "Это dev-сервер Werkzeug — не рассчитан на нагрузку и безопасность; нужен WSGI-сервер (gunicorn) за nginx",
+        "Он работает только на Windows",
+        "Он не умеет HTTPS-редиректы"
+      ],
+      "correctIndex": 1,
+      "explanation": "Flask сам предупреждает при запуске: WARNING: This is a development server. Do not use it in a production deployment."
+    }
+  ]
+}

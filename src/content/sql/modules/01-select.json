@@ -1,0 +1,130 @@
+{
+  "id": "01-select",
+  "theoryFile": "01-select.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Вывести имя и возраст всех клиентов, у которых адрес — Kazan (в любом регистре).",
+      "hint": "Приведи address к нижнему регистру функцией lower().",
+      "solution": "SELECT name, age\nFROM person\nWHERE lower(address) = 'kazan';",
+      "language": "sql"
+    },
+    {
+      "id": "ex01",
+      "task": "Вывести имя и возраст всех женщин из Kazan, отсортировать по имени.",
+      "hint": "Два условия через AND + ORDER BY.",
+      "solution": "SELECT name, age\nFROM person\nWHERE gender = 'female' AND lower(address) = 'kazan'\nORDER BY name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex02",
+      "task": "Вывести название и рейтинг пиццерий с рейтингом от 3.5 до 5 включительно, по возрастанию рейтинга. Реши двумя способами.",
+      "hint": "Способ 1 — операторы сравнения, способ 2 — BETWEEN.",
+      "solution": "-- способ 1\nSELECT name, rating\nFROM pizzeria\nWHERE rating >= 3.5 AND rating <= 5\nORDER BY rating;\n\n-- способ 2\nSELECT name, rating\nFROM pizzeria\nWHERE rating BETWEEN 3.5 AND 5\nORDER BY rating;",
+      "language": "sql",
+      "note": "Результаты совпадают: BETWEEN включает обе границы."
+    },
+    {
+      "id": "ex03",
+      "task": "Вывести уникальные person_id тех, кто посещал пиццерии с 06.01.2022 по 09.01.2022 включительно ИЛИ посещал пиццерию с id = 2. Сортировка по person_id по убыванию.",
+      "hint": "DISTINCT + условие с OR. Не забудь скобки вокруг диапазона дат.",
+      "solution": "SELECT DISTINCT person_id\nFROM person_visits\nWHERE (visit_date BETWEEN '2022-01-06' AND '2022-01-09')\n   OR pizzeria_id = 2\nORDER BY person_id DESC;",
+      "language": "sql"
+    },
+    {
+      "id": "ex04",
+      "task": "Собрать для каждого клиента одну строку вида Name (age:X,gender:'Y',address:'Z') в колонку person_information, отсортировать по ней.",
+      "hint": "Конкатенация ||. Одинарная кавычка внутри строки экранируется удвоением: ''.",
+      "solution": "SELECT name || ' (age:' || age || ',gender:''' || gender || ''',address:''' || address || ''')' AS person_information\nFROM person\nORDER BY person_information;",
+      "language": "sql",
+      "note": "В ',gender:''' последние три кавычки: две подряд дают символ ' в тексте, третья закрывает литерал."
+    },
+    {
+      "id": "ex05",
+      "task": "Вывести имена клиентов, которые 07.01.2022 заказали позиции меню с id 13, 14 или 18. Нельзя использовать IN и JOIN.",
+      "hint": "Скалярный подзапрос в SELECT: по person_id из person_order найди name в person.",
+      "solution": "SELECT (SELECT name FROM person WHERE id = person_id) AS name\nFROM person_order\nWHERE (menu_id = 13 OR menu_id = 14 OR menu_id = 18)\n  AND order_date = '2022-01-07';",
+      "language": "sql",
+      "note": "id в подзапросе — колонка person, person_id — колонка внешнего person_order. Это коррелированный подзапрос."
+    },
+    {
+      "id": "ex06",
+      "task": "Тот же запрос, что в ex05, плюс колонка check_name: true, если имя — Denis, иначе false.",
+      "hint": "CASE WHEN … THEN true ELSE false END.",
+      "solution": "SELECT (SELECT name FROM person WHERE id = person_id) AS name,\n       CASE\n         WHEN (SELECT name FROM person WHERE id = person_id) = 'Denis' THEN true\n         ELSE false\n       END AS check_name\nFROM person_order\nWHERE (menu_id = 13 OR menu_id = 14 OR menu_id = 18)\n  AND order_date = '2022-01-07';",
+      "language": "sql",
+      "note": "Сравнение само возвращает boolean, поэтому CASE можно заменить на (SELECT name …) = 'Denis' AS check_name."
+    },
+    {
+      "id": "ex07",
+      "task": "Вывести id и имя клиентов и колонку interval_info: возраст 10–20 → interval #1, 21–23 → interval #2, остальные → interval #3. Сортировка по interval_info.",
+      "hint": "CASE с несколькими WHEN; условия проверяются сверху вниз.",
+      "solution": "SELECT id, name,\n       CASE\n         WHEN age >= 10 AND age <= 20 THEN 'interval #1'\n         WHEN age > 20 AND age < 24 THEN 'interval #2'\n         ELSE 'interval #3'\n       END AS interval_info\nFROM person\nORDER BY interval_info;",
+      "language": "sql"
+    },
+    {
+      "id": "ex08",
+      "task": "Вывести все колонки заказов с чётным id, отсортировать по id.",
+      "hint": "Оператор остатка от деления %.",
+      "solution": "SELECT *\nFROM person_order\nWHERE id % 2 = 0\nORDER BY id;",
+      "language": "sql"
+    },
+    {
+      "id": "ex09",
+      "task": "Вывести имя клиента и название пиццерии для всех визитов с 07.01.2022 по 09.01.2022 включительно. Только подзапросы: в FROM и в SELECT. Сортировка: имя по возрастанию, пиццерия по убыванию.",
+      "hint": "В FROM выбери person_id и pizzeria_id нужных визитов (алиас pv), в SELECT по ним найди name.",
+      "solution": "SELECT (SELECT name FROM person WHERE person.id = pv.person_id) AS person_name,\n       (SELECT name FROM pizzeria WHERE pizzeria.id = pv.pizzeria_id) AS pizzeria_name\nFROM (\n  SELECT person_id, pizzeria_id\n  FROM person_visits\n  WHERE visit_date BETWEEN '2022-01-07' AND '2022-01-09'\n) AS pv\nORDER BY person_name, pizzeria_name DESC;",
+      "language": "sql"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Какие рейтинги вернёт WHERE rating BETWEEN 3.5 AND 5?",
+      "options": [
+        "3.5 < rating < 5",
+        "3.5 <= rating <= 5",
+        "3.5 <= rating < 5",
+        "3.5 < rating <= 5"
+      ],
+      "correctIndex": 1,
+      "explanation": "BETWEEN включает обе границы — это то же самое, что rating >= 3.5 AND rating <= 5."
+    },
+    {
+      "id": "q2",
+      "question": "Почему запрос SELECT age * 2 AS double_age FROM person WHERE double_age > 40 падает с ошибкой?",
+      "options": [
+        "WHERE выполняется раньше SELECT, алиаса double_age ещё нет",
+        "Нельзя умножать колонку в SELECT",
+        "Алиасы работают только в GROUP BY",
+        "Нужно писать AS \"double_age\" в кавычках"
+      ],
+      "correctIndex": 0,
+      "explanation": "Порядок выполнения: FROM → WHERE → SELECT → ORDER BY. Нужно повторить выражение: WHERE age * 2 > 40. А в ORDER BY алиас использовать можно."
+    },
+    {
+      "id": "q3",
+      "question": "В таблице есть адрес 'Kazan'. Что вернёт WHERE address = 'kazan'?",
+      "options": [
+        "Эту строку — сравнение строк не зависит от регистра",
+        "Ошибку типа данных",
+        "Строку, но только если колонка проиндексирована",
+        "Пустой результат — сравнение строк чувствительно к регистру"
+      ],
+      "correctIndex": 3,
+      "explanation": "В PostgreSQL = для строк учитывает регистр. Поэтому в ex00 используется lower(address) = 'kazan'."
+    },
+    {
+      "id": "q4",
+      "question": "Что делает SELECT DISTINCT name, age FROM person?",
+      "options": [
+        "Убирает строки с повторяющимся name, age может повторяться",
+        "Убирает только строки с NULL",
+        "Убирает строки, где совпадает и name, и age одновременно",
+        "Сортирует результат по name"
+      ],
+      "correctIndex": 2,
+      "explanation": "DISTINCT применяется ко всей строке результата: дубликатом считается строка, где совпадают все выбранные колонки."
+    }
+  ]
+}

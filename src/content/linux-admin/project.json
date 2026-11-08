@@ -1,0 +1,18 @@
+{
+  "id": "linux-admin",
+  "title": "Linux Administration Basics",
+  "description": "Ubuntu Server 20.04 в VirtualBox с нуля до рабочего сервера: разметка с LVM, пользователи и sudo, статическая сеть, NTP, SSH на нестандартном порту, мониторинг, диски, логи, cron.",
+  "stack": ["Ubuntu Server 20.04", "LVM", "Netplan", "systemd", "OpenSSH", "apt", "top / htop", "df / du / ncdu", "syslog", "cron"],
+  "repo": "https://github.com/aminalkobaili-bash/linux-administration-basics",
+  "modules": [
+    { "id": "01-install", "order": 1, "title": "Установка и разметка диска", "level": "beginner", "topics": ["GPT", "/boot", "LVM", "ext4"] },
+    { "id": "02-users", "order": 2, "title": "Пользователи, группы и sudo", "level": "beginner", "topics": ["adduser", "usermod -aG", "/etc/passwd", "sudo"] },
+    { "id": "03-network", "order": 3, "title": "Сеть: статический IP через Netplan", "level": "intermediate", "topics": ["ip a", "ip route", "Netplan", "DNS"] },
+    { "id": "04-packages-ntp", "order": 4, "title": "Пакеты и синхронизация времени", "level": "beginner", "topics": ["apt", "timedatectl", "NTP", "timezone"] },
+    { "id": "05-ssh", "order": 5, "title": "SSH и службы systemd", "level": "intermediate", "topics": ["systemctl", "sshd_config", "Port", "ss / netstat"] },
+    { "id": "06-monitoring", "order": 6, "title": "Мониторинг процессов", "level": "beginner", "topics": ["top", "htop", "load average", "RAM / swap"] },
+    { "id": "07-disks", "order": 7, "title": "Диски и файловые системы", "level": "intermediate", "topics": ["fdisk", "df -Th", "du", "ncdu"] },
+    { "id": "08-logs", "order": 8, "title": "Системные логи", "level": "intermediate", "topics": ["/var/log", "syslog", "auth.log", "journalctl"] },
+    { "id": "09-cron", "order": 9, "title": "Планировщик cron", "level": "intermediate", "topics": ["crontab", "*/2", "PATH", "логирование"] }
+  ]
+}

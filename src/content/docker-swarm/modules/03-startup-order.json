@@ -1,0 +1,100 @@
+{
+  "id": "03-startup-order",
+  "theoryFile": "03-startup-order.md",
+  "practice": [
+    {
+      "id": "pg-health",
+      "task": "Добавить PostgreSQL healthcheck через pg_isready, используя пользователя и базу из переменных контейнера.",
+      "hint": "CMD-SHELL и $$ для экранирования интерполяции Compose.",
+      "solution": "database:\n  image: postgres:18.6-alpine\n  healthcheck:\n    test: [\"CMD-SHELL\", \"pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}\"]\n    interval: 5s\n    timeout: 5s\n    retries: 10\n    start_period: 10s",
+      "language": "yaml"
+    },
+    {
+      "id": "mq-health",
+      "task": "Добавить healthcheck для RabbitMQ.",
+      "hint": "rabbitmq-diagnostics ping.",
+      "solution": "rabbitmq:\n  image: rabbitmq:4.3.7-management-alpine\n  healthcheck:\n    test: [\"CMD\", \"rabbitmq-diagnostics\", \"-q\", \"ping\"]\n    interval: 10s\n    timeout: 10s\n    retries: 10\n    start_period: 20s",
+      "language": "yaml"
+    },
+    {
+      "id": "depends",
+      "task": "Сделать так, чтобы booking-service стартовал только после того, как и база, и RabbitMQ прошли healthcheck.",
+      "hint": "depends_on с condition: service_healthy, удобно через якорь.",
+      "solution": "x-depends-db-mq: &depends-db-mq\n  database:\n    condition: service_healthy\n  rabbitmq:\n    condition: service_healthy\n\nservices:\n  booking-service:\n    depends_on: *depends-db-mq",
+      "language": "yaml"
+    },
+    {
+      "id": "health-status",
+      "task": "Посмотреть статус healthcheck базы и последние результаты проверок.",
+      "hint": "docker compose ps и docker inspect .State.Health.",
+      "solution": "docker compose ps database\ndocker inspect --format '{{json .State.Health}}' docker-compose-microservices-database-1",
+      "language": "bash"
+    },
+    {
+      "id": "strict-wait",
+      "task": "Исправить ENTRYPOINT так, чтобы сервис ждал базу до 2 минут и не запускался, если она так и не ответила.",
+      "hint": "Флаги wait-for-it: -t (таймаут) и -s (strict).",
+      "solution": "ENTRYPOINT [\"./wait-for-it.sh\", \"database:5432\", \"-t\", \"120\", \"-s\", \"--\", \"java\", \"-jar\", \"app.jar\"]",
+      "language": "dockerfile",
+      "note": "Найдено при подготовке модуля: по умолчанию таймаут 15 с, и без -s java запускается даже без базы."
+    },
+    {
+      "id": "actuator",
+      "task": "Добавить healthcheck Java-сервису через Spring Boot Actuator.",
+      "hint": "Эндпоинт /actuator/health; в JRE-образе Ubuntu есть bash — можно без curl.",
+      "solution": "session-service:\n  healthcheck:\n    test: [\"CMD-SHELL\", \"exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /actuator/health HTTP/1.0\\\\r\\\\n\\\\r\\\\n' >&3 && grep -q UP <&3\"]\n    interval: 10s\n    retries: 12\n    start_period: 40s",
+      "language": "yaml",
+      "note": "Задачи нет в проекте и не проверялась. Нужна зависимость spring-boot-starter-actuator в pom.xml. curl в образ ставить не обязательно."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "depends_on: [database] без условия. Чего ждёт Compose перед запуском сервиса?",
+      "options": [
+        "Только запуска контейнера базы, а не готовности PostgreSQL",
+        "Пока база начнёт принимать соединения",
+        "Пока выполнится init.sql",
+        "Пока пройдёт healthcheck"
+      ],
+      "correctIndex": 0,
+      "explanation": "Для готовности нужен healthcheck + condition: service_healthy."
+    },
+    {
+      "id": "q2",
+      "question": "Зачем в healthcheck Compose пишут $${POSTGRES_USER}, а не ${POSTGRES_USER}?",
+      "options": [
+        "Так требует pg_isready",
+        "Это опечатка",
+        "$$ экранирует интерполяцию Compose — переменная раскроется shell внутри контейнера",
+        "Чтобы скрыть значение в логах"
+      ],
+      "correctIndex": 2,
+      "explanation": "С одним $ Compose подставил бы значение из .env хоста при разборе файла (или пустую строку)."
+    },
+    {
+      "id": "q3",
+      "question": "wait-for-it.sh database:5432 -- java -jar app.jar. База не открыла порт за 15 секунд. Что произойдёт?",
+      "options": [
+        "Скрипт будет ждать бесконечно",
+        "Контейнер завершится с ошибкой",
+        "Скрипт перезапустит базу",
+        "java всё равно запустится — таймаут по умолчанию 15 с, strict-режим выключен"
+      ],
+      "correctIndex": 3,
+      "explanation": "Найдено при подготовке модуля по коду wait-for-it.sh. Нужны -t и -s."
+    },
+    {
+      "id": "q4",
+      "question": "Почему wait-for-it.sh оставлен в образе, если в Compose есть depends_on с service_healthy?",
+      "options": [
+        "Он быстрее depends_on",
+        "В Docker Swarm depends_on игнорируется — ожидание должно быть в самом сервисе",
+        "depends_on не работает с PostgreSQL",
+        "Для совместимости с Windows"
+      ],
+      "correctIndex": 1,
+      "explanation": "docker stack deploy не учитывает depends_on: все сервисы стартуют одновременно."
+    }
+  ]
+}

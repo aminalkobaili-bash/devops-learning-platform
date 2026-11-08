@@ -1,0 +1,102 @@
+{
+  "id": "05-multistage",
+  "theoryFile": "05-multistage.md",
+  "practice": [
+    {
+      "id": "builder",
+      "task": "Написать builder-стадию: Debian 13 slim, gcc и заголовки libfcgi, компиляция server.c.",
+      "hint": "FROM … AS builder, RUN apt-get, COPY, RUN gcc.",
+      "solution": "FROM debian:13-slim AS builder\n\nRUN apt-get update && \\\n    apt-get install -y --no-install-recommends gcc libc6-dev libfcgi-dev && \\\n    rm -rf /var/lib/apt/lists/*\n\nWORKDIR /build\nCOPY app/server.c .\nRUN gcc -O2 -o server server.c -lfcgi",
+      "language": "dockerfile"
+    },
+    {
+      "id": "runtime",
+      "task": "Написать финальную стадию: только runtime-пакеты и бинарник из builder.",
+      "hint": "Второй FROM, COPY --from=builder.",
+      "solution": "FROM debian:13-slim\n\nRUN apt-get update && \\\n    apt-get install -y --no-install-recommends libfcgi0t64 spawn-fcgi nginx curl && \\\n    rm -rf /var/lib/apt/lists/*\n\nWORKDIR /server\nCOPY --from=builder /build/server .\nCOPY docker/entrypoint.sh .\nCOPY nginx/fastcgi-gateway.conf /etc/nginx/nginx.conf",
+      "language": "dockerfile"
+    },
+    {
+      "id": "no-gcc",
+      "task": "Проверить, что в финальном образе нет компилятора.",
+      "hint": "Запустить временный контейнер и поискать gcc.",
+      "solution": "docker run --rm --entrypoint sh docker-nginx-fastcgi:1.0 -c 'command -v gcc || echo \"gcc not found\"'",
+      "language": "bash",
+      "note": "--entrypoint заменяет entrypoint.sh, чтобы не запускать nginx. В старом образе был /usr/bin/gcc."
+    },
+    {
+      "id": "sizes",
+      "task": "Сравнить размер образа на диске и сжатый размер.",
+      "hint": "docker images и docker image inspect -f '{{.Size}}'.",
+      "solution": "docker images docker-nginx-fastcgi\ndocker image inspect -f '{{.Size}}' docker-nginx-fastcgi:1.0",
+      "language": "bash",
+      "note": "В проекте: 149 MB на диске, 38 MB сжатый. Было 397 / 102 MB."
+    },
+    {
+      "id": "dockerignore",
+      "task": "Написать .dockerignore по принципу белого списка: в контекст сборки попадают только app/, docker/, nginx/.",
+      "hint": "* исключает всё, ! возвращает нужное.",
+      "solution": "*\n!app/\n!docker/\n!nginx/",
+      "language": "bash",
+      "note": "Из проекта. До него в контекст уходил container.tar на 156 MB."
+    },
+    {
+      "id": "target",
+      "task": "Собрать только builder-стадию, чтобы отладить компиляцию.",
+      "hint": "Флаг --target у docker build.",
+      "solution": "docker build -f docker/Dockerfile --target builder -t fastcgi-builder .\ndocker run --rm fastcgi-builder ls -la /build",
+      "language": "bash",
+      "note": "Задачи нет в проекте."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Что попадает в итоговый образ при multi-stage сборке?",
+      "options": [
+        "Все стадии, объединённые в один образ",
+        "Только первая стадия",
+        "Только последняя стадия и то, что в неё явно скопировали через COPY --from",
+        "Только стадия с именем final"
+      ],
+      "correctIndex": 2,
+      "explanation": "Остальные стадии используются только при сборке. Конкретную можно собрать флагом --target."
+    },
+    {
+      "id": "q2",
+      "question": "Почему компилятор в продакшен-образе — проблема не только размера?",
+      "options": [
+        "Он замедляет запуск контейнера",
+        "Это лишняя поверхность атаки: попав в контейнер, можно собрать любой бинарник; плюс больше пакетов — больше CVE",
+        "gcc требует root",
+        "Он конфликтует с nginx"
+      ],
+      "correctIndex": 1,
+      "explanation": "Принцип минимальности: в runtime-образе только то, что нужно для работы."
+    },
+    {
+      "id": "q3",
+      "question": "При переходе с debian:12-slim на 13 сборка упала на установке libfcgi0ldbl. Почему?",
+      "options": [
+        "Пакет переименован в libfcgi0t64 из-за перехода Debian на 64-битный time_t",
+        "В Debian 13 нет FastCGI",
+        "Нужен флаг --allow-unauthenticated",
+        "Пакет переехал в alpine"
+      ],
+      "correctIndex": 0,
+      "explanation": "Библиотеки с изменённым ABI получили суффикс t64. При обновлении базы проверяй имена пакетов."
+    },
+    {
+      "id": "q4",
+      "question": "Зачем .dockerignore, если COPY копирует только указанные файлы?",
+      "options": [
+        "Без него COPY не работает",
+        "Он ускоряет запуск контейнера",
+        "Он шифрует файлы",
+        "Весь контекст отправляется демону перед сборкой — большие и секретные файлы (156 MB tar, .env) лучше туда не передавать"
+      ],
+      "correctIndex": 3,
+      "explanation": "Плюс защита от случайного COPY . . — секреты не попадут в слой образа."
+    }
+  ]
+}

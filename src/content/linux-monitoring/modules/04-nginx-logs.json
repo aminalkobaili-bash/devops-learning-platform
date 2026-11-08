@@ -1,0 +1,101 @@
+{
+  "id": "04-nginx-logs",
+  "theoryFile": "04-nginx-logs.md",
+  "practice": [
+    {
+      "id": "gen-line",
+      "task": "Сгенерировать одну строку лога в формате combined: случайный IP, метод и код из массивов, дата — 1 день назад.",
+      "hint": "Массивы, $RANDOM % длина, date -d.",
+      "solution": "METHODS=(GET POST PUT PATCH DELETE)\nCODES=(200 201 400 401 403 404 500 501 502 503)\n\nIP=\"$((RANDOM%255)).$((RANDOM%255)).$((RANDOM%255)).$((RANDOM%255))\"\nMETHOD=${METHODS[$RANDOM % ${#METHODS[@]}]}\nCODE=${CODES[$RANDOM % ${#CODES[@]}]}\nDATE=$(date -d \"-1 day\" +\"%d/%b/%Y\")\n\necho \"$IP - - [$DATE:12:00:00 +0000] \\\"$METHOD / HTTP/1.1\\\" $CODE 1024 \\\"-\\\" \\\"Mozilla\\\"\"",
+      "language": "bash",
+      "note": "Упрощённая версия generator.sh: время фиксировано."
+    },
+    {
+      "id": "sort-code",
+      "task": "Вывести все записи логов, отсортированные по коду ответа.",
+      "hint": "sort по 9-му полю как по числу.",
+      "solution": "sort -k9 -n access_log_*.log",
+      "language": "bash",
+      "note": "В main.sh — awk '{print $0}' | sort -k9 -n; awk здесь не нужен."
+    },
+    {
+      "id": "uniq-ip",
+      "task": "Вывести уникальные IP-адреса клиентов.",
+      "hint": "Первое поле + sort + uniq.",
+      "solution": "awk '{print $1}' access_log_*.log | sort | uniq",
+      "language": "bash",
+      "note": "То же короче: sort -u."
+    },
+    {
+      "id": "errors",
+      "task": "Вывести все запросы, завершившиеся ошибкой клиента или сервера.",
+      "hint": "Условие на $9: от 400 до 599.",
+      "solution": "awk '$9 >= 400 && $9 < 600' access_log_*.log",
+      "language": "bash",
+      "note": "На образце из репозитория — 16 строк из 20."
+    },
+    {
+      "id": "error-ips",
+      "task": "Вывести уникальные IP, у которых были ошибочные запросы.",
+      "hint": "Условие из прошлой задачи + печать $1 + sort | uniq.",
+      "solution": "awk '$9 >= 400 && $9 < 600 {print $1}' access_log_*.log | sort | uniq",
+      "language": "bash"
+    },
+    {
+      "id": "code-stats",
+      "task": "Посчитать, сколько раз встречается каждый код ответа, — от частых к редким.",
+      "hint": "uniq -c считает повторы, затем sort -rn.",
+      "solution": "awk '{print $9}' access_log_*.log | sort | uniq -c | sort -rn",
+      "language": "bash",
+      "note": "Задачи нет в проекте. На образце: 403 — 5 раз, 503 и 500 — по 3."
+    },
+    {
+      "id": "goaccess",
+      "task": "Собрать HTML-отчёт GoAccess по всем пяти файлам логов.",
+      "hint": "Склеить файлы и указать формат COMBINED.",
+      "solution": "cat access_log_*.log > all_logs.log\ngoaccess all_logs.log --log-format=COMBINED -o report.html",
+      "language": "bash",
+      "note": "Отчёт проекта: samples/goaccess-report.html (2838 строк)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему перед uniq почти всегда ставят sort?",
+      "options": [
+        "uniq удаляет только соседние повторяющиеся строки",
+        "uniq работает только с числами",
+        "sort ускоряет uniq в 2 раза",
+        "Без sort uniq выдаёт ошибку"
+      ],
+      "correctIndex": 0,
+      "explanation": "a b a → uniq оставит все три. После sort: a a b → a b."
+    },
+    {
+      "id": "q2",
+      "question": "В строке combined-лога nginx код ответа — это поле awk…",
+      "options": ["$7", "$10", "$9", "$1"],
+      "correctIndex": 2,
+      "explanation": "$1 — IP, $4–$5 — время, $6–$8 — запрос в кавычках, $9 — код, $10 — размер."
+    },
+    {
+      "id": "q3",
+      "question": "Пользователи жалуются на 502 Bad Gateway от nginx. Где искать причину?",
+      "options": [
+        "В браузере пользователя",
+        "В бэкенде за nginx: он не запущен, упал или вернул некорректный ответ",
+        "В DNS",
+        "В правах на файлы сайта"
+      ],
+      "correctIndex": 1,
+      "explanation": "5xx — ошибка на стороне сервера. 502 — nginx-прокси не смог получить ответ от upstream. Смотри error.log nginx и логи приложения."
+    },
+    {
+      "id": "q4",
+      "question": "Скрипт присваивает SECONDS=0, а через 3 секунды читает $SECONDS. Что он получит?",
+      "options": ["0", "Ошибку: имя зарезервировано", "Случайное число", "3 — SECONDS сама растёт со временем"],
+      "correctIndex": 3,
+      "explanation": "SECONDS — служебная переменная bash. Генератор логов проекта использует её для времени записей — для своих данных лучше обычное имя."
+    }
+  ]
+}

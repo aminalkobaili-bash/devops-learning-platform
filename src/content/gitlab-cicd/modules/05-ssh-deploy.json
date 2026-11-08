@@ -1,0 +1,104 @@
+{
+  "id": "05-ssh-deploy",
+  "theoryFile": "05-ssh-deploy.md",
+  "practice": [
+    {
+      "id": "keys",
+      "task": "Создать для пользователя gitlab-runner ключ ed25519 без пароля, положить его на VM2 и добавить VM2 в known_hosts.",
+      "hint": "sudo -u gitlab-runner: ssh-keygen, ssh-copy-id, ssh-keyscan.",
+      "solution": "sudo -u gitlab-runner ssh-keygen -t ed25519 -N \"\" -f /home/gitlab-runner/.ssh/id_ed25519\nsudo -u gitlab-runner ssh-copy-id deploy@<VM2>\nsudo -u gitlab-runner ssh-keyscan <VM2> >> /home/gitlab-runner/.ssh/known_hosts",
+      "language": "bash",
+      "note": "<VM2> — адрес prod-VM. ssh-copy-id в первый раз спросит пароль пользователя deploy."
+    },
+    {
+      "id": "test-ssh",
+      "task": "Проверить от имени gitlab-runner, что вход на VM2 работает без пароля и без вопросов.",
+      "hint": "ssh с BatchMode=yes и простой командой.",
+      "solution": "sudo -u gitlab-runner ssh -o BatchMode=yes deploy@<VM2> 'hostname'",
+      "language": "bash",
+      "note": "С BatchMode=yes проблема с ключом или known_hosts даёт ошибку сразу, а не вопрос."
+    },
+    {
+      "id": "deploy-sh",
+      "task": "Написать deploy.sh: обязательные DEPLOY_HOST и DEPLOY_USER, копирование во временный файл, установка в /usr/local/bin с владельцем root и правами 755.",
+      "hint": ": \"${VAR:?msg}\", scp и ssh с BatchMode, sudo install.",
+      "solution": "#!/bin/bash\nset -euo pipefail\n\n: \"${DEPLOY_HOST:?DEPLOY_HOST is not set}\"\n: \"${DEPLOY_USER:?DEPLOY_USER is not set}\"\n\nREMOTE_TMP=\"/tmp/DO.$$\"\n\nscp -o BatchMode=yes app/DO \"${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_TMP}\"\nssh -o BatchMode=yes \"${DEPLOY_USER}@${DEPLOY_HOST}\" \\\n  \"sudo /usr/bin/install -o root -g root -m 755 ${REMOTE_TMP} /usr/local/bin/DO && rm -f ${REMOTE_TMP} && ls -l /usr/local/bin/DO\"",
+      "language": "bash",
+      "note": "Сокращённый scripts/deploy.sh."
+    },
+    {
+      "id": "sudoers",
+      "task": "Разрешить пользователю deploy на VM2 без пароля только установку бинарника, а не любые команды.",
+      "hint": "Отдельный файл в /etc/sudoers.d, редактирование через visudo.",
+      "solution": "sudo visudo -f /etc/sudoers.d/deploy\n\n# содержимое:\ndeploy ALL=(root) NOPASSWD: /usr/bin/install -o root -g root -m 755 /tmp/DO.* /usr/local/bin/DO",
+      "language": "bash",
+      "note": "Рекомендация из README вместо NOPASSWD: ALL. Звёздочка в sudoers всё ещё позволяет лишние аргументы — это компромисс."
+    },
+    {
+      "id": "check-perms",
+      "task": "На VM2 проверить владельца и права задеплоенного бинарника.",
+      "hint": "ls -l или stat.",
+      "solution": "ls -l /usr/local/bin/DO          # -rwxr-xr-x 1 root root …\nstat -c '%U:%G %a' /usr/local/bin/DO   # root:root 755",
+      "language": "bash",
+      "note": "До исправления было rwxrwxrwx — любой пользователь VM2 мог подменить бинарник."
+    },
+    {
+      "id": "smoke",
+      "task": "Добавить в конец деплоя проверку, что установленная программа отвечает правильно.",
+      "hint": "Запустить DO 6 по SSH и проверить вывод grep -q.",
+      "solution": "ssh -o BatchMode=yes \"${DEPLOY_USER}@${DEPLOY_HOST}\" '/usr/local/bin/DO 6' \\\n  | grep -q \"Learning to CI/CD\" && echo \"Smoke test OK\"",
+      "language": "bash",
+      "note": "Задачи нет в проекте: проверка делалась вручную. С set -o pipefail провал grep уронит deploy_job."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Зачем в scp и ssh опция -o BatchMode=yes?",
+      "options": [
+        "Ускорить передачу",
+        "Сжать трафик",
+        "Запретить любые интерактивные вопросы — при проблеме с ключом или хостом сразу ошибка, а не зависший job",
+        "Включить параллельную передачу"
+      ],
+      "correctIndex": 2,
+      "explanation": "В CI некому отвечать на «Are you sure you want to continue connecting?» или вводить пароль."
+    },
+    {
+      "id": "q2",
+      "question": "Почему mv + chmod +x оставил бинарник с правами 777, а install -m 755 — нет?",
+      "options": [
+        "mv сохраняет исходные права файла (артефакт был rwxrwxrwx), chmod +x только добавляет x; install сразу задаёт точные права",
+        "mv всегда ставит 777",
+        "install не копирует файл",
+        "chmod +x ставит 777"
+      ],
+      "correctIndex": 0,
+      "explanation": "Записываемый всеми бинарник в /usr/local/bin — путь к повышению привилегий."
+    },
+    {
+      "id": "q3",
+      "question": "Пользователю деплоя выдано NOPASSWD: ALL. Чем это опасно?",
+      "options": [
+        "Деплой будет медленнее",
+        "Ничем, если ключ надёжный",
+        "sudo перестанет логировать команды",
+        "Утечка SSH-ключа runner даёт полный root на prod"
+      ],
+      "correctIndex": 3,
+      "explanation": "Принцип минимальных привилегий: разрешить только нужную команду. Отмечено в README как оставшаяся проблема."
+    },
+    {
+      "id": "q4",
+      "question": "В какой модели доставки у CI вообще нет доступа к production-серверу?",
+      "options": [
+        "Push по SSH",
+        "Pull: сервер сам забирает новую версию (пакет, образ, GitOps-агент)",
+        "scp",
+        "Ручной деплой"
+      ],
+      "correctIndex": 1,
+      "explanation": "Компрометация CI не даёт прямого доступа к prod — только возможность опубликовать версию, которую ещё нужно подписать и проверить."
+    }
+  ]
+}

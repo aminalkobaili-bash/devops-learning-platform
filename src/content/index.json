@@ -1,0 +1,114 @@
+[
+  {
+    "id": "sql",
+    "order": 1,
+    "title": "SQL / PostgreSQL",
+    "description": "10 модулей: от SELECT и JOIN до индексов, ограничений и уровней изоляции транзакций.",
+    "tags": [
+      "PostgreSQL",
+      "CTE",
+      "EXPLAIN ANALYZE",
+      "транзакции"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/sql-postgresql-practice",
+    "ready": true
+  },
+  {
+    "id": "linux-admin",
+    "order": 2,
+    "title": "Linux Administration Basics",
+    "description": "9 модулей: Ubuntu Server с нуля — LVM, пользователи, Netplan, NTP, SSH, мониторинг, диски, логи, cron.",
+    "tags": [
+      "Ubuntu",
+      "Netplan",
+      "systemd",
+      "SSH",
+      "cron"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/linux-administration-basics",
+    "ready": true
+  },
+  {
+    "id": "linux-networking",
+    "order": 3,
+    "title": "Linux Networking",
+    "description": "7 модулей: подсети, маршрутизация через роутеры, iptables, DHCP, SNAT/DNAT, SSH-туннели.",
+    "tags": [
+      "iproute2",
+      "iptables",
+      "DHCP",
+      "tcpdump"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/linux-networking",
+    "ready": true
+  },
+  {
+    "id": "linux-monitoring",
+    "order": 4,
+    "title": "Linux System Monitoring",
+    "description": "7 модулей: Bash-утилиты, разбор логов nginx через awk, Prometheus + Grafana, свой экспортер.",
+    "tags": [
+      "Bash",
+      "Prometheus",
+      "Grafana",
+      "awk"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/linux-system-monitoring",
+    "ready": true
+  },
+  {
+    "id": "flask-api",
+    "order": 5,
+    "title": "Flask Tic-Tac-Toe API",
+    "description": "7 модулей: REST на Flask, слоистая архитектура, minimax, SQLAlchemy 2.0, JWT, рейтинг в SQL.",
+    "tags": [
+      "Python",
+      "Flask",
+      "JWT",
+      "SQLAlchemy"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/flask-tictactoe-api",
+    "ready": true
+  },
+  {
+    "id": "docker-nginx",
+    "order": 6,
+    "title": "Docker: nginx + FastCGI",
+    "description": "7 модулей: контейнеры, nginx, FastCGI на C, Dockerfile, multi-stage, Dockle, Compose.",
+    "tags": [
+      "Docker",
+      "Compose",
+      "nginx",
+      "Dockle"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/docker-nginx-fastcgi",
+    "ready": true
+  },
+  {
+    "id": "gitlab-cicd",
+    "order": 7,
+    "title": "GitLab CI/CD Pipeline",
+    "description": "8 модулей: сборка, стиль, тесты, GitLab CI, деплой по SSH, Telegram, секреты, GitHub Actions.",
+    "tags": [
+      "GitLab CI",
+      "GitHub Actions",
+      "SSH"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/gitlab-cicd-pipeline",
+    "ready": true
+  },
+  {
+    "id": "docker-swarm",
+    "order": 8,
+    "title": "Docker Compose → Swarm",
+    "description": "8 модулей: Java-образы, Compose на 9 сервисов, healthcheck, секреты, кластер Swarm, stack deploy, nginx, эксплуатация.",
+    "tags": [
+      "Docker Swarm",
+      "Vagrant",
+      "nginx",
+      "Postman"
+    ],
+    "repo": "https://github.com/aminalkobaili-bash/docker-compose-microservices",
+    "ready": true
+  }
+]

@@ -1,0 +1,104 @@
+{
+  "id": "05-prometheus-grafana",
+  "theoryFile": "05-prometheus-grafana.md",
+  "practice": [
+    {
+      "id": "install",
+      "task": "Установить Prometheus, node_exporter и проверить, что экспортер отдаёт метрики.",
+      "hint": "Пакеты prometheus и prometheus-node-exporter из репозитория Ubuntu. Метрики — curl на порт 9100.",
+      "solution": "sudo apt install prometheus prometheus-node-exporter\nsystemctl status prometheus prometheus-node-exporter\ncurl -s localhost:9100/metrics | grep ^node_load",
+      "language": "bash",
+      "note": "Способ установки в README не указан; пакеты из apt — простейший вариант для Ubuntu. Grafana ставится из своего репозитория (grafana.com)."
+    },
+    {
+      "id": "scrape-job",
+      "task": "Добавить в Prometheus опрос своего экспортера, который nginx отдаёт на localhost:80/metrics, с меткой group=custom.",
+      "hint": "Новый элемент в scrape_configs: job_name, static_configs, metrics_path.",
+      "solution": "# /etc/prometheus/prometheus.yml, в scrape_configs:\n- job_name: \"custom_node\"\n  static_configs:\n    - targets: [\"localhost:80\"]\n      labels:\n        group: \"custom\"\n  metrics_path: /metrics\n\n# затем\npromtool check config /etc/prometheus/prometheus.yml\nsudo systemctl restart prometheus",
+      "language": "yaml",
+      "note": "configs/prometheus/custom-exporter-job.yml. Проверка: http://localhost:9090/targets — custom_node в состоянии UP."
+    },
+    {
+      "id": "cpu-query",
+      "task": "Написать PromQL-запрос загрузки CPU в процентах по каждому хосту.",
+      "hint": "rate по mode=\"idle\", усреднить по ядрам, вычесть из 100.",
+      "solution": "100 - avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100",
+      "language": "promql",
+      "note": "В собственном дашборде проекта CPU показан как rate(node_cpu_seconds_total[…]) по каждому mode — это доли времени по режимам, а не единый процент."
+    },
+    {
+      "id": "disk-io",
+      "task": "Исправить панель Disk I/O: показывать скорость чтений и записей в секунду, а не сырой счётчик.",
+      "hint": "Обе метрики — counter, им нужен rate().",
+      "solution": "rate(node_disk_reads_completed_total[1m])\nrate(node_disk_writes_completed_total[1m])",
+      "language": "promql",
+      "note": "Недочёт 2 из README: на сыром node_disk_reads_completed_total работа disk-filler не была видна."
+    },
+    {
+      "id": "disk-space",
+      "task": "Вывести свободное место на корневой ФС в байтах, исключив tmpfs.",
+      "hint": "Gauge node_filesystem_avail_bytes с фильтрами по меткам.",
+      "solution": "node_filesystem_avail_bytes{mountpoint=\"/\", fstype!=\"tmpfs\"}",
+      "language": "promql",
+      "note": "В проекте фильтр был по устройству: {device=\"/dev/sda2\"}. Фильтр по mountpoint не зависит от имени диска."
+    },
+    {
+      "id": "import-1860",
+      "task": "Импортировать в Grafana готовый дашборд Node Exporter Full.",
+      "hint": "Импорт по ID с grafana.com.",
+      "solution": "# Grafana → Dashboards → New → Import\n# Dashboard ID: 1860 → Load\n# Data source: Prometheus → Import",
+      "language": "bash",
+      "note": "В проекте дашборд импортирован без изменений: 4 vCPU, 8 GiB RAM, 4 GiB swap, root FS 24 GiB."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Как Prometheus получает метрики от node_exporter?",
+      "options": [
+        "Экспортер отправляет их в Prometheus по UDP",
+        "Prometheus сам периодически делает HTTP-запрос к /metrics экспортера (pull)",
+        "Через общий файл на диске",
+        "Через Grafana"
+      ],
+      "correctIndex": 1,
+      "explanation": "Pull-модель: Prometheus опрашивает цели из scrape_configs раз в scrape_interval. Если опрос не удался, метрика up цели = 0."
+    },
+    {
+      "id": "q2",
+      "question": "Панель Grafana показывает node_disk_reads_completed_total как почти прямую растущую линию. В чём проблема?",
+      "options": [
+        "Диск постоянно перегружен",
+        "Неверный data source",
+        "Это counter — нужен rate(), чтобы увидеть скорость операций",
+        "Нужно больше памяти Prometheus"
+      ],
+      "correctIndex": 2,
+      "explanation": "Недочёт из проекта. Счётчик растёт с запуска системы; интересна его производная — операций в секунду."
+    },
+    {
+      "id": "q3",
+      "question": "Какая из метрик — gauge, а не counter?",
+      "options": [
+        "node_memory_MemAvailable_bytes",
+        "node_cpu_seconds_total",
+        "node_network_receive_bytes_total",
+        "node_disk_writes_completed_total"
+      ],
+      "correctIndex": 0,
+      "explanation": "Доступная память растёт и падает — gauge. Остальные только накапливаются (суффикс _total)."
+    },
+    {
+      "id": "q4",
+      "question": "Чем pull-модель удобна для обнаружения упавшего хоста?",
+      "options": [
+        "Хост сам сообщает о падении",
+        "Ничем — push лучше",
+        "Pull потребляет меньше трафика",
+        "Неудачный scrape сразу виден как up == 0, а в push «нет данных» неотличимо от «нечего отправлять»"
+      ],
+      "correctIndex": 3,
+      "explanation": "Prometheus знает список целей и проверяет каждую. Алерт на up == 0 — первое правило любого мониторинга."
+    }
+  ]
+}

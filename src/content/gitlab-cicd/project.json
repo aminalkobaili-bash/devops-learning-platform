@@ -1,0 +1,17 @@
+{
+  "id": "gitlab-cicd",
+  "title": "GitLab CI/CD Pipeline",
+  "description": "Пайплайн для C-утилиты на self-hosted GitLab Runner: сборка с артефактом, проверка стиля, интеграционные тесты, ручной деплой по SSH на prod-VM и уведомления в Telegram. Плюс зеркало build → style → test в GitHub Actions.",
+  "stack": ["GitLab CI", "GitLab Runner (shell)", "gcc / make", "clang-format", "Python", "Bash", "SSH / scp", "Telegram Bot API", "GitHub Actions"],
+  "repo": "https://github.com/aminalkobaili-bash/gitlab-cicd-pipeline",
+  "modules": [
+    { "id": "01-build", "order": 1, "title": "Утилита на C и Makefile", "level": "beginner", "topics": ["коды возврата", "atoi", "make", "CFLAGS"] },
+    { "id": "02-style", "order": 2, "title": "Проверка стиля: clang-format", "level": "beginner", "topics": [".clang-format", "--dry-run", "--Werror", "версии"] },
+    { "id": "03-tests", "order": 3, "title": "Интеграционные тесты", "level": "beginner", "topics": ["subprocess", "exit code", "stdout", "граничные случаи"] },
+    { "id": "04-gitlab-ci", "order": 4, "title": "GitLab CI: стадии, jobs, runner", "level": "intermediate", "topics": ["stages", "tags", "artifacts", "shell executor"] },
+    { "id": "05-ssh-deploy", "order": 5, "title": "Деплой по SSH", "level": "intermediate", "topics": ["ключи", "known_hosts", "install", "sudoers"] },
+    { "id": "06-notify-secrets", "order": 6, "title": "Уведомления и секреты", "level": "advanced", "topics": ["Telegram API", "set -euo pipefail", "CI/CD Variables", "утечка токена"] },
+    { "id": "07-manual-jobs", "order": 7, "title": "Manual jobs, after_script и безопасность runner", "level": "advanced", "topics": ["when: manual", "allow_failure", "after_script", "protected"] },
+    { "id": "08-github-actions", "order": 8, "title": "Зеркало в GitHub Actions", "level": "intermediate", "topics": ["workflow", "needs", "artifacts", "permissions"] }
+  ]
+}

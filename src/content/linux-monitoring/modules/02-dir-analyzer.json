@@ -1,0 +1,97 @@
+{
+  "id": "02-dir-analyzer",
+  "theoryFile": "02-dir-analyzer.md",
+  "practice": [
+    {
+      "id": "validate",
+      "task": "Проверить аргументы скрипта: ровно один параметр, это существующий каталог, путь заканчивается на /.",
+      "hint": "$#, [[ -d ]], последний символ строки — ${DIR: -1}.",
+      "solution": "if [ \"$#\" -ne 1 ]; then\n    echo \"Error: script must be run with one parameter.\"\n    exit 1\nfi\n\nDIR=\"$1\"\n\nif [[ ! -d \"$DIR\" ]]; then\n    echo \"Error: Directory does not exist.\"\n    exit 1\nfi\n\nif [[ \"${DIR: -1}\" != \"/\" ]]; then\n    echo \"Error: Path must end with / .\"\n    exit 1\nfi",
+      "language": "bash",
+      "note": "Пробел в ${DIR: -1} обязателен: ${DIR:-1} — это подстановка значения по умолчанию."
+    },
+    {
+      "id": "count",
+      "task": "Посчитать количество файлов в каталоге рекурсивно и количество .conf-файлов.",
+      "hint": "find -type f, -name, wc -l.",
+      "solution": "find \"$DIR\" -type f 2>/dev/null | wc -l\nfind \"$DIR\" -type f -name \"*.conf\" 2>/dev/null | wc -l",
+      "language": "bash",
+      "note": "2>/dev/null скрывает ошибки «Permission denied» для каталогов без прав."
+    },
+    {
+      "id": "archives",
+      "task": "Посчитать архивы: .zip, .tar, .gz, .rar.",
+      "hint": "Несколько условий -name через -o, сгруппированные экранированными скобками.",
+      "solution": "find \"$DIR\" -type f \\( -name \"*.zip\" -o -name \"*.tar\" -o -name \"*.gz\" -o -name \"*.rar\" \\) 2>/dev/null | wc -l",
+      "language": "bash"
+    },
+    {
+      "id": "top-folders",
+      "task": "Вывести топ-5 подкаталогов по размеру, не включая сам анализируемый каталог.",
+      "hint": "du --max-depth=1 | sort -rh — и пропустить первую строку.",
+      "solution": "du -h --max-depth=1 \"$DIR\" 2>/dev/null | sort -rh | tail -n +2 | head -n 5",
+      "language": "bash",
+      "note": "В оригинале нет tail -n +2 — поэтому сам $DIR попадает в топ первым (недочёт 4 из README)."
+    },
+    {
+      "id": "top-files",
+      "task": "Вывести топ-10 самых больших файлов с размером.",
+      "hint": "find -exec du -h {} + и сортировка «человеческих» размеров.",
+      "solution": "find \"$DIR\" -type f -exec du -h {} + 2>/dev/null | sort -rh | head -10",
+      "language": "bash"
+    },
+    {
+      "id": "md5",
+      "task": "Для топ-10 самых больших исполняемых файлов вывести путь, размер и MD5-хеш.",
+      "hint": "find -executable → du → sort → head → while read → md5sum.",
+      "solution": "find \"$DIR\" -type f -executable 2>/dev/null \\\n| xargs -I {} du -h \"{}\" 2>/dev/null \\\n| sort -rh \\\n| head -10 \\\n| while read size filepath\ndo\n    HASH=$(md5sum \"$filepath\" | awk '{print $1}')\n    echo \"$filepath, $size, $HASH\"\ndone",
+      "language": "bash",
+      "note": "xargs -I {} запускает du для каждого файла отдельно и корректно передаёт пути с пробелами (одна строка — один аргумент)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Чем find … -exec cmd {} \\; отличается от find … -exec cmd {} +?",
+      "options": [
+        "Ничем",
+        "\\; запускает cmd для каждого файла отдельно, + передаёт много файлов в один запуск — быстрее",
+        "+ работает только с du",
+        "\\; выполняет команду параллельно"
+      ],
+      "correctIndex": 1,
+      "explanation": "Для тысяч файлов разница — тысячи запусков процесса против нескольких. В dir-analyzer подсчёт текстовых файлов использует \\;, топ файлов — +."
+    },
+    {
+      "id": "q2",
+      "question": "Почему в топе du --max-depth=1 /var/log/ | sort -rh первым всегда стоит сам /var/log/?",
+      "options": [
+        "Это ошибка sort",
+        "du сортирует сам",
+        "du выводит итог и по самому каталогу — он включает всё содержимое и всегда больше любого подкаталога",
+        "Из-за символических ссылок"
+      ],
+      "correctIndex": 2,
+      "explanation": "Недочёт 4 из README. Исправление — пропустить первую строку после сортировки (tail -n +2) или считать du -sh \"$DIR\"*/."
+    },
+    {
+      "id": "q3",
+      "question": "Как утилита file определяет тип файла?",
+      "options": [
+        "По сигнатуре содержимого (magic bytes)",
+        "По расширению имени",
+        "По правам доступа",
+        "По каталогу, в котором лежит файл"
+      ],
+      "correctIndex": 0,
+      "explanation": "Скрипт script.txt с ELF-содержимым file назовёт executable. Расширения в Linux — только соглашение."
+    },
+    {
+      "id": "q4",
+      "question": "Что выведет sort -h для строк 1.2M, 900K, 3G?",
+      "options": ["1.2M, 3G, 900K", "3G, 1.2M, 900K", "900K, 3G, 1.2M", "900K, 1.2M, 3G"],
+      "correctIndex": 3,
+      "explanation": "-h понимает суффиксы K/M/G. Обычный sort сравнил бы строки посимвольно, а sort -n — только числа без суффиксов."
+    }
+  ]
+}

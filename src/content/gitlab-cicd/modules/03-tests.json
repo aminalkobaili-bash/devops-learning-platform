@@ -1,0 +1,96 @@
+{
+  "id": "03-tests",
+  "theoryFile": "03-tests.md",
+  "practice": [
+    {
+      "id": "run-test",
+      "task": "Написать функцию, которая запускает бинарник с аргументами и проверяет код возврата и наличие строки в выводе; при провале — выход с кодом 1.",
+      "hint": "subprocess.run со списком, capture_output, text; sys.exit(1).",
+      "solution": "import subprocess\nimport sys\n\nBINARY = \"./app/DO\"\n\ndef run_test(args, expected_output, expected_code):\n    result = subprocess.run([BINARY] + args, capture_output=True, text=True)\n    if result.returncode != expected_code:\n        print(f\"FAIL: args={args} expected {expected_code}, got {result.returncode}\")\n        sys.exit(1)\n    if expected_output not in result.stdout:\n        print(f\"FAIL: args={args} expected output '{expected_output}'\")\n        sys.exit(1)\n    print(f\"PASS: args={args}\")",
+      "language": "python",
+      "note": "Сокращённая версия tests/test_integration.py."
+    },
+    {
+      "id": "run",
+      "task": "Запустить интеграционные тесты после сборки.",
+      "hint": "Сначала make, потом python3 из корня репозитория — путь к бинарнику относительный.",
+      "solution": "cd app && make && cd ..\npython3 tests/test_integration.py\necho \"exit $?\"",
+      "language": "bash",
+      "note": "Проверено в Ubuntu 24.04 (WSL): 4 PASS, exit 0."
+    },
+    {
+      "id": "edge-cases",
+      "task": "Добавить тесты на нечисловой аргумент abc и на 1abc. Какой из них упадёт?",
+      "hint": "Ожидание для обоих — Bad number! и код 254.",
+      "solution": "run_test([\"abc\"], \"Bad number!\", 254)   # PASS\nrun_test([\"1abc\"], \"Bad number!\", 254)  # FAIL: Expected code 254, Got 0",
+      "language": "python",
+      "note": "Тест на 1abc вскрывает баг atoi из модуля 01."
+    },
+    {
+      "id": "pytest",
+      "task": "Переписать тесты на pytest с параметризацией, чтобы выполнялись все сценарии даже при провале одного.",
+      "hint": "@pytest.mark.parametrize и assert.",
+      "solution": "import subprocess\nimport pytest\n\nCASES = [\n    ([], \"Bad number of arguments!\", 255),\n    ([\"1\"], \"Learning to Linux\", 0),\n    ([\"6\"], \"Learning to CI/CD\", 0),\n    ([\"7\"], \"Bad number!\", 254),\n]\n\n@pytest.mark.parametrize(\"args,output,code\", CASES)\ndef test_do(args, output, code):\n    r = subprocess.run([\"./app/DO\", *args], capture_output=True, text=True, timeout=5)\n    assert r.returncode == code\n    assert output in r.stdout",
+      "language": "python",
+      "note": "Задачи нет в проекте."
+    },
+    {
+      "id": "junit",
+      "task": "Показывать результаты тестов во вкладке Tests пайплайна GitLab.",
+      "hint": "pytest --junitxml и artifacts: reports: junit.",
+      "solution": "test_job:\n  stage: test\n  tags:\n    - test\n  script:\n    - pytest tests/ --junitxml=report.xml\n  artifacts:\n    when: always\n    reports:\n      junit: report.xml",
+      "language": "yaml",
+      "note": "when: always — отчёт сохраняется и при провале тестов, именно тогда он нужнее всего."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Как GitLab понимает, что тесты провалились?",
+      "options": [
+        "По слову FAIL в выводе",
+        "По ненулевому коду возврата команды из script",
+        "По файлу report.xml",
+        "По времени выполнения"
+      ],
+      "correctIndex": 1,
+      "explanation": "CI не разбирает текст. sys.exit(1) в Python, exit 1 в bash, assert в pytest — всё сводится к коду возврата."
+    },
+    {
+      "id": "q2",
+      "question": "Почему команду в subprocess.run передают списком, а не строкой с shell=True?",
+      "options": [
+        "Списком быстрее",
+        "shell=True не работает в Linux",
+        "Без shell аргументы передаются как есть — спецсимволы вроде ; или $(…) не выполнятся как команды",
+        "Так требует capture_output"
+      ],
+      "correctIndex": 2,
+      "explanation": "shell=True со строкой из внешних данных — инъекция команд."
+    },
+    {
+      "id": "q3",
+      "question": "Какой тест вскроет баг разбора аргумента в утилите проекта?",
+      "options": [
+        "./DO 1abc должен вернуть Bad number! и 254, а возвращает Learning to Linux и 0",
+        "./DO 6 → Learning to CI/CD",
+        "./DO без аргументов → 255",
+        "./DO 7 → 254"
+      ],
+      "correctIndex": 0,
+      "explanation": "Остальные три есть в тестах и проходят. Граничные и некорректные входы находят больше ошибок, чем «счастливый путь»."
+    },
+    {
+      "id": "q4",
+      "question": "Чем pytest лучше самописного run_test с sys.exit(1)?",
+      "options": [
+        "pytest не требует Python",
+        "pytest проверяет стиль кода",
+        "Ничем",
+        "Выполняет все тесты и показывает сводку, а не останавливается на первом провале; умеет JUnit-отчёт для GitLab"
+      ],
+      "correctIndex": 3,
+      "explanation": "sys.exit на первом провале скрывает остальные ошибки — их увидишь только после исправления первой."
+    }
+  ]
+}

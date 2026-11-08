@@ -1,0 +1,16 @@
+{
+  "id": "docker-nginx",
+  "title": "Docker: nginx + FastCGI",
+  "description": "FastCGI-сервер на C и nginx в собственном Docker-образе: от ручной работы с контейнерами до multi-stage сборки, харденинга по Dockle (non-root, без SUID, healthcheck) и стенда reverse proxy в Docker Compose.",
+  "stack": ["Docker 29", "Compose v2", "Debian 13 slim", "nginx", "C + libfcgi", "spawn-fcgi", "Dockle"],
+  "repo": "https://github.com/aminalkobaili-bash/docker-nginx-fastcgi",
+  "modules": [
+    { "id": "01-containers", "order": 1, "title": "Контейнеры вручную", "level": "beginner", "topics": ["run", "ports", "inspect", "cp / export"] },
+    { "id": "02-nginx", "order": 2, "title": "nginx: конфиг, status, reverse proxy", "level": "beginner", "topics": ["location", "stub_status", "proxy_pass", "reload"] },
+    { "id": "03-fastcgi", "order": 3, "title": "FastCGI-сервер на C", "level": "intermediate", "topics": ["libfcgi", "spawn-fcgi", "fastcgi_pass", "fastcgi_params"] },
+    { "id": "04-dockerfile", "order": 4, "title": "Dockerfile и entrypoint", "level": "intermediate", "topics": ["слои", "кеш", "ENTRYPOINT", "exec / PID 1"] },
+    { "id": "05-multistage", "order": 5, "title": "Multi-stage сборка и размер образа", "level": "intermediate", "topics": ["builder", "COPY --from", ".dockerignore", "397 → 149 MB"] },
+    { "id": "06-hardening", "order": 6, "title": "Безопасность образа и Dockle", "level": "advanced", "topics": ["non-root", "SUID", "теги", "HEALTHCHECK"] },
+    { "id": "07-compose", "order": 7, "title": "Docker Compose", "level": "intermediate", "topics": ["build + image", "сеть и DNS", "service_healthy", "volumes :ro"] }
+  ]
+}

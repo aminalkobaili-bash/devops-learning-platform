@@ -1,0 +1,95 @@
+{
+  "id": "02-nginx",
+  "theoryFile": "02-nginx.md",
+  "practice": [
+    {
+      "id": "status",
+      "task": "Добавить в server nginx страницу /status со статистикой соединений и открыть её только с localhost.",
+      "hint": "stub_status; allow / deny. Точное совпадение — location =.",
+      "solution": "location = /status {\n    stub_status;\n    allow 127.0.0.1;\n    deny all;\n}",
+      "language": "nginx",
+      "note": "В проекте — location /status { stub_status; allow all; }. С allow 127.0.0.1 HEALTHCHECK внутри контейнера продолжит работать, а прокси — получит 403."
+    },
+    {
+      "id": "reverse-proxy",
+      "task": "Написать server-блок прокси: слушать 8080, всё пересылать на server:81, передавать исходный Host и IP клиента.",
+      "hint": "proxy_pass + proxy_set_header Host и X-Real-IP.",
+      "solution": "server {\n    listen 8080;\n    server_name localhost;\n\n    location / {\n        proxy_pass http://server:81;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    }\n}",
+      "language": "nginx",
+      "note": "nginx/proxy.conf из проекта без лишнего location /status и с добавленным X-Forwarded-For."
+    },
+    {
+      "id": "non-root-paths",
+      "task": "Перенастроить nginx для запуска не от root: pid-файл и временные каталоги — в /tmp.",
+      "hint": "Директива pid в main и *_temp_path в http.",
+      "solution": "pid /tmp/nginx.pid;\n\nhttp {\n    client_body_temp_path /tmp/client_temp;\n    proxy_temp_path       /tmp/proxy_temp;\n    fastcgi_temp_path     /tmp/fastcgi_temp;\n    uwsgi_temp_path       /tmp/uwsgi_temp;\n    scgi_temp_path        /tmp/scgi_temp;\n    …\n}",
+      "language": "nginx",
+      "note": "Из nginx/fastcgi-gateway.conf."
+    },
+    {
+      "id": "test-reload",
+      "task": "Проверить синтаксис конфига, посмотреть итоговую конфигурацию со всеми include и применить изменения без остановки.",
+      "hint": "Три флага nginx.",
+      "solution": "nginx -t\nnginx -T | less\nnginx -s reload",
+      "language": "bash"
+    },
+    {
+      "id": "status-read",
+      "task": "Запросить /status трижды подряд и объяснить, как меняются числа accepts / handled / requests.",
+      "hint": "curl в цикле.",
+      "solution": "for i in 1 2 3; do curl -s localhost/status; echo; done",
+      "language": "bash",
+      "note": "Каждый curl — новое соединение: все три счётчика растут на 1. При keep-alive несколько запросов в одном соединении увеличивали бы только requests."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Зачем в reverse proxy proxy_set_header X-Real-IP $remote_addr?",
+      "options": [
+        "Чтобы бэкенд знал IP клиента — иначе он видит IP прокси",
+        "Чтобы ускорить ответ",
+        "Чтобы включить HTTPS",
+        "Это обязательная директива, без неё proxy_pass не работает"
+      ],
+      "correctIndex": 0,
+      "explanation": "Соединение к бэкенду открывает прокси. Исходный адрес передаётся только заголовком."
+    },
+    {
+      "id": "q2",
+      "question": "Есть location /status и location = /status. Какой сработает для запроса /status?",
+      "options": [
+        "Тот, что записан первым",
+        "location /status — он короче",
+        "location = /status — точное совпадение имеет высший приоритет",
+        "Оба"
+      ],
+      "correctIndex": 2,
+      "explanation": "Порядок: =, затем ^~, затем регулярки по порядку записи, затем самый длинный префикс."
+    },
+    {
+      "id": "q3",
+      "question": "nginx от appuser слушает порт 81 внутри Docker-контейнера и работает. Почему, если порт < 1024?",
+      "options": [
+        "nginx всегда работает от root",
+        "Порт 81 не считается привилегированным",
+        "appuser входит в группу root",
+        "Docker ставит в namespace контейнера net.ipv4.ip_unprivileged_port_start=0"
+      ],
+      "correctIndex": 3,
+      "explanation": "Это поведение Docker с версии 20.10. Вне контейнера тот же nginx получил бы Permission denied."
+    },
+    {
+      "id": "q4",
+      "question": "Что делает nginx -s reload?",
+      "options": [
+        "Полностью перезапускает nginx, обрывая соединения",
+        "Мастер перечитывает конфиг и плавно заменяет worker-процессы без разрыва текущих соединений",
+        "Только проверяет синтаксис",
+        "Очищает кеш"
+      ],
+      "correctIndex": 1,
+      "explanation": "Если в новом конфиге ошибка, мастер продолжит работать со старым. Поэтому перед reload — nginx -t."
+    }
+  ]
+}

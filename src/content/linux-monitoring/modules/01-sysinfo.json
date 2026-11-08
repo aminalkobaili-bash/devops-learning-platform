@@ -1,0 +1,96 @@
+{
+  "id": "01-sysinfo",
+  "theoryFile": "01-sysinfo.md",
+  "practice": [
+    {
+      "id": "ram-used",
+      "task": "Одной командой awk вывести занятую оперативную память в GB с тремя знаками после запятой, считая «занято» как MemTotal − MemAvailable.",
+      "hint": "Запомнить два поля в переменные, в блоке END посчитать и printf.",
+      "solution": "awk '\n/MemTotal/ {total=$2}\n/MemAvailable/ {free=$2}\nEND {printf \"%.3f GB\\n\", (total-free)/1024/1024}\n' /proc/meminfo",
+      "language": "bash",
+      "note": "Из system_info.sh. Значения в /proc/meminfo — в КиБ."
+    },
+    {
+      "id": "os-release",
+      "task": "Получить название и версию ОС без парсинга текста grep-ом.",
+      "hint": "/etc/os-release — валидный shell-файл.",
+      "solution": "if [ -f /etc/os-release ]; then\n    . /etc/os-release\n    OS=\"$NAME, $VERSION\"\nfi\necho \"$OS\"",
+      "language": "bash"
+    },
+    {
+      "id": "gateway",
+      "task": "Вывести адрес шлюза по умолчанию.",
+      "hint": "ip route, строка default, третье поле.",
+      "solution": "ip route | awk '/default/ {print $3}'",
+      "language": "bash"
+    },
+    {
+      "id": "defaults",
+      "task": "Загрузить config.conf, если он есть, и подставить значение по умолчанию 6 для column1_background, если в конфиге его нет.",
+      "hint": "source с проверкой -f и подстановка ${var:-default}.",
+      "solution": "DEFAULT_COLUMN1_BG=6\nCONFIG_FILE=\"config.conf\"\n\nif [ -f \"$CONFIG_FILE\" ]; then\n    source \"$CONFIG_FILE\"\nfi\n\ncolumn1_background=${column1_background:-$DEFAULT_COLUMN1_BG}",
+      "language": "bash",
+      "note": "Из config_loader.sh."
+    },
+    {
+      "id": "validate",
+      "task": "Проверить, что значение цвета — одна цифра от 1 до 6, иначе выйти с ошибкой.",
+      "hint": "[[ … =~ ^[1-6]$ ]].",
+      "solution": "if ! [[ \"$param\" =~ ^[1-6]$ ]]; then\n    echo \"Error: Config values must be numbers from 1 to 6\"\n    exit 1\nfi",
+      "language": "bash"
+    },
+    {
+      "id": "color-line",
+      "task": "Вывести строку «HOSTNAME = myhost», где название — на красном фоне белым, а значение — на зелёном фоне синим.",
+      "hint": "ANSI: фон 41/42, текст 37/34, сброс \\033[0m. Нужен echo -e.",
+      "solution": "echo -e \"\\033[41;37mHOSTNAME\\033[0m = \\033[42;34mmyhost\\033[0m\"",
+      "language": "bash",
+      "note": "Так устроена функция print_line в colors.sh."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Чем source script.sh отличается от ./script.sh?",
+      "options": [
+        "source выполняет файл в текущей оболочке — функции и переменные остаются доступны",
+        "source запускает файл с правами root",
+        "./script.sh работает быстрее и сохраняет переменные",
+        "Ничем"
+      ],
+      "correctIndex": 0,
+      "explanation": "./script.sh запускает отдельный процесс bash, и всё, что он определил, исчезает с его завершением. Поэтому модули sysinfo подключаются через source."
+    },
+    {
+      "id": "q2",
+      "question": "Что вернёт ${color:-6}, если переменная color пустая строка?",
+      "options": ["Пустую строку", "Ошибку", "6", "color"],
+      "correctIndex": 2,
+      "explanation": "Двоеточие в :- означает «не задана ИЛИ пустая». ${color-6} без двоеточия подставит 6, только если переменная вообще не задана."
+    },
+    {
+      "id": "q3",
+      "question": "Почему «занятую» память считают как MemTotal − MemAvailable, а не MemTotal − MemFree?",
+      "options": [
+        "MemFree всегда равен нулю",
+        "Так быстрее",
+        "MemAvailable учитывает swap",
+        "MemFree не учитывает кеш, который ядро отдаст по требованию, — результат был бы завышен"
+      ],
+      "correctIndex": 3,
+      "explanation": "Linux занимает свободную память под кеш файлов. MemAvailable — оценка того, сколько реально можно выделить новым процессам."
+    },
+    {
+      "id": "q4",
+      "question": "Скрипт делает source ./config_loader.sh. Что будет, если запустить его как ./sysinfo/main.sh из родительской папки?",
+      "options": [
+        "Всё сработает",
+        "Ошибка: файл ищется относительно текущего каталога, а не каталога скрипта",
+        "bash сам найдёт файл рядом со скриптом",
+        "Скрипт запустится без цветов"
+      ],
+      "correctIndex": 1,
+      "explanation": "Относительный путь в source разрешается от текущей рабочей папки. Поэтому в README сказано запускать скрипты из их папки. Надёжнее — $(dirname \"$0\")."
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "id": "02-joins",
+  "theoryFile": "02-joins.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Одним списком вывести id и название из menu (pizza_name) и из person (name). Колонки: object_id, object_name. Сортировка по object_id, затем по object_name.",
+      "hint": "UNION. Алиасы колонок задаются в первом запросе.",
+      "solution": "SELECT id AS object_id, pizza_name AS object_name\nFROM menu\nUNION\nSELECT id, name\nFROM person\nORDER BY object_id, object_name;",
+      "language": "sql"
+    },
+    {
+      "id": "ex01",
+      "task": "Вывести одну колонку object_name: сначала имена из person (по алфавиту), затем названия пицц из menu (по алфавиту). Дубликаты сохранить.",
+      "hint": "UNION ALL + служебная колонка sort_order, по которой сортируются блоки.",
+      "solution": "-- способ 1: menu = 1, person = 2, блоки по убыванию\nSELECT object_name\nFROM (\n  SELECT pizza_name AS object_name, 1 AS sort_order FROM menu\n  UNION ALL\n  SELECT name AS object_name, 2 AS sort_order FROM person\n) AS t\nORDER BY sort_order DESC, object_name;\n\n-- способ 2: person = 1, menu = 2, блоки по возрастанию\nSELECT object_name\nFROM (\n  SELECT name AS object_name, 1 AS sort_order FROM person\n  UNION ALL\n  SELECT pizza_name AS object_name, 2 AS sort_order FROM menu\n) AS t\nORDER BY sort_order, object_name;",
+      "language": "sql",
+      "note": "sort_order не выводится в результат — он нужен только для ORDER BY во внешнем запросе."
+    },
+    {
+      "id": "ex02",
+      "task": "Вывести уникальные названия пицц из menu по убыванию. Нельзя использовать DISTINCT и GROUP BY.",
+      "hint": "Операция над множествами таблицы с самой собой удаляет дубликаты.",
+      "solution": "-- способ 1\nSELECT pizza_name FROM menu\nINTERSECT\nSELECT pizza_name FROM menu\nORDER BY pizza_name DESC;\n\n-- способ 2\nSELECT pizza_name FROM menu\nUNION\nSELECT pizza_name FROM menu\nORDER BY pizza_name DESC;",
+      "language": "sql"
+    },
+    {
+      "id": "ex03",
+      "task": "Найти дни, когда клиент и делал заказ, и посещал пиццерию. Колонки: action_date, person_id. Дубликаты сохранить. Сортировка: action_date по возрастанию, person_id по убыванию.",
+      "hint": "Пересечение с сохранением кратности.",
+      "solution": "SELECT order_date AS action_date, person_id\nFROM person_order\nINTERSECT ALL\nSELECT visit_date, person_id\nFROM person_visits\nORDER BY action_date, person_id DESC;",
+      "language": "sql"
+    },
+    {
+      "id": "ex04",
+      "task": "Вывести person_id тех, кто сделал заказ 07.01.2022, но не посещал пиццерию в этот день. Дубликаты сохранить.",
+      "hint": "Вычитание множеств с сохранением кратности.",
+      "solution": "SELECT person_id\nFROM person_order\nWHERE order_date = '2022-01-07'\nEXCEPT ALL\nSELECT person_id\nFROM person_visits\nWHERE visit_date = '2022-01-07';",
+      "language": "sql",
+      "note": "EXCEPT ALL вычитает по количеству: если клиент сделал 2 заказа и был 1 раз, его person_id останется 1 раз."
+    },
+    {
+      "id": "ex05",
+      "task": "Вывести все возможные комбинации клиент × пиццерия (все колонки обеих таблиц). Сортировка по id клиента, затем по id пиццерии.",
+      "hint": "Декартово произведение.",
+      "solution": "SELECT *\nFROM person\nCROSS JOIN pizzeria\nORDER BY person.id, pizzeria.id;",
+      "language": "sql",
+      "note": "Колонка id есть в обеих таблицах, поэтому в ORDER BY её нужно уточнить именем таблицы."
+    },
+    {
+      "id": "ex06",
+      "task": "Как ex03, но вместо person_id — имя клиента (person_name) и без дубликатов. Сортировка: action_date по возрастанию, person_name по убыванию.",
+      "hint": "INTERSECT + скалярный подзапрос в SELECT, чтобы получить имя.",
+      "solution": "SELECT order_date AS action_date,\n       (SELECT name FROM person WHERE id = person_id) AS person_name\nFROM person_order\nINTERSECT\nSELECT visit_date,\n       (SELECT name FROM person WHERE id = person_id) AS person_name\nFROM person_visits\nORDER BY action_date, person_name DESC;",
+      "language": "sql"
+    },
+    {
+      "id": "ex07",
+      "task": "Для всех заказов вывести дату заказа и строку person_information вида Name (age:X). Сортировка по дате, затем по person_information.",
+      "hint": "INNER JOIN person_order с person по person_id = id.",
+      "solution": "SELECT po.order_date,\n       p.name || ' (age:' || p.age || ')' AS person_information\nFROM person_order po\nINNER JOIN person p ON po.person_id = p.id\nORDER BY order_date, person_information;",
+      "language": "sql"
+    },
+    {
+      "id": "ex08",
+      "task": "Тот же результат, что в ex07, но через NATURAL JOIN.",
+      "hint": "NATURAL JOIN соединяет по одноимённым колонкам. В person_order нет колонки, совпадающей с person.id, — её нужно создать в подзапросе.",
+      "solution": "SELECT po.order_date,\n       p.name || ' (age:' || p.age || ')' AS person_information\nFROM (SELECT order_date, person_id AS id FROM person_order) po\nNATURAL JOIN person p\nORDER BY order_date, person_information;",
+      "language": "sql",
+      "note": "В подзапросе берём только order_date и person_id AS id: если бы осталась колонка id самого заказа, NATURAL JOIN соединил бы по ней — и результат был бы неверным."
+    },
+    {
+      "id": "ex09",
+      "task": "Вывести названия пиццерий, которые никто не посещал. Реши двумя способами: через IN и через EXISTS.",
+      "hint": "Антисоединение: NOT IN со списком и NOT EXISTS с коррелированным подзапросом.",
+      "solution": "-- способ 1\nSELECT name\nFROM pizzeria\nWHERE id NOT IN (SELECT pizzeria_id FROM person_visits);\n\n-- способ 2\nSELECT name\nFROM pizzeria p\nWHERE NOT EXISTS (\n  SELECT pizzeria_id FROM person_visits WHERE pizzeria_id = p.id\n);",
+      "language": "sql",
+      "note": "Если в person_visits.pizzeria_id окажется NULL, способ 1 вернёт пустой результат, а способ 2 — правильный."
+    },
+    {
+      "id": "ex10",
+      "task": "Для всех заказов вывести имя клиента (person_name), название пиццы (pizza_name) и название пиццерии (pizzeria_name). Сортировка по всем трём колонкам.",
+      "hint": "Цепочка из трёх INNER JOIN: person_order → person, person_order → menu, menu → pizzeria.",
+      "solution": "SELECT p.name AS person_name,\n       m.pizza_name,\n       pi.name AS pizzeria_name\nFROM person_order po\nINNER JOIN person p ON p.id = po.person_id\nINNER JOIN menu m ON m.id = po.menu_id\nINNER JOIN pizzeria pi ON pi.id = m.pizzeria_id\nORDER BY person_name, pizza_name, pizzeria_name;",
+      "language": "sql"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Чем UNION отличается от UNION ALL?",
+      "options": [
+        "UNION ALL удаляет дубликаты, UNION — нет",
+        "UNION работает только с одинаковыми именами колонок",
+        "UNION удаляет дубликаты, UNION ALL оставляет их и работает быстрее",
+        "Ничем, это синонимы"
+      ],
+      "correctIndex": 2,
+      "explanation": "UNION после склейки убирает повторяющиеся строки (это требует сортировки или хеширования), UNION ALL просто выводит строки подряд."
+    },
+    {
+      "id": "q2",
+      "question": "В person 10 строк, в pizzeria — 5. Сколько строк вернёт person CROSS JOIN pizzeria?",
+      "options": ["50", "15", "10", "5"],
+      "correctIndex": 0,
+      "explanation": "CROSS JOIN — декартово произведение: каждая строка первой таблицы с каждой строкой второй, 10 × 5 = 50."
+    },
+    {
+      "id": "q3",
+      "question": "Подзапрос вернул значения (1, 2, NULL). Что вернёт WHERE id NOT IN (подзапрос)?",
+      "options": [
+        "Все строки, кроме id = 1 и id = 2",
+        "Ошибку: NULL нельзя использовать в IN",
+        "Все строки, включая id = 1 и id = 2",
+        "Пустой результат"
+      ],
+      "correctIndex": 3,
+      "explanation": "NOT IN раскрывается в id <> 1 AND id <> 2 AND id <> NULL. Сравнение с NULL даёт NULL, и условие не бывает true. NOT EXISTS этой проблемы не имеет."
+    },
+    {
+      "id": "q4",
+      "question": "По каким колонкам NATURAL JOIN соединяет таблицы?",
+      "options": [
+        "По первичному и внешнему ключу",
+        "По всем колонкам с одинаковыми именами",
+        "По колонкам, указанным в ON",
+        "По первой колонке каждой таблицы"
+      ],
+      "correctIndex": 1,
+      "explanation": "NATURAL JOIN неявно берёт все одноимённые колонки. Поэтому в ex08 person_id переименован в id, а id заказа в подзапрос не попал."
+    }
+  ]
+}

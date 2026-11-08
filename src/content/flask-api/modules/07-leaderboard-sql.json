@@ -1,0 +1,98 @@
+{
+  "id": "07-leaderboard-sql",
+  "theoryFile": "07-leaderboard-sql.md",
+  "practice": [
+    {
+      "id": "union",
+      "task": "На SQL собрать все участия игроков в завершённых играх в одну колонку user_uuid вместе со status и winner_uuid.",
+      "hint": "Два SELECT — по player1_uuid и player2_uuid — через UNION ALL.",
+      "solution": "SELECT player1_uuid AS user_uuid, status, winner_uuid\nFROM games\nWHERE status IN ('WON', 'DRAW')\nUNION ALL\nSELECT player2_uuid, status, winner_uuid\nFROM games\nWHERE status IN ('WON', 'DRAW');",
+      "language": "sql"
+    },
+    {
+      "id": "agg",
+      "task": "По участиям посчитать для каждого игрока победы, поражения (включая проигрыш компьютеру) и ничьи.",
+      "hint": "SUM(CASE …) × 3, GROUP BY user_uuid. Победа компьютера — winner_uuid IS NULL.",
+      "solution": "SELECT user_uuid,\n  SUM(CASE WHEN status = 'WON' AND winner_uuid = user_uuid THEN 1 ELSE 0 END) AS wins,\n  SUM(CASE WHEN status = 'WON'\n            AND (winner_uuid IS NULL OR winner_uuid != user_uuid)\n           THEN 1 ELSE 0 END) AS losses,\n  SUM(CASE WHEN status = 'DRAW' THEN 1 ELSE 0 END) AS draws\nFROM user_games\nGROUP BY user_uuid;",
+      "language": "sql",
+      "note": "Без winner_uuid IS NULL поражения компьютеру не считались — баг, исправленный после ревью."
+    },
+    {
+      "id": "ratio",
+      "task": "Посчитать win_ratio = wins / (losses + draws) дробным числом, без деления на ноль.",
+      "hint": "CASE для нулевого знаменателя; привести к float до деления.",
+      "solution": "CASE\n  WHEN losses + draws = 0 THEN CAST(wins AS float)\n  ELSE CAST(wins AS float) / (losses + draws)\nEND AS win_ratio",
+      "language": "sql",
+      "note": "В проекте CAST стоит снаружи всего CASE. Это работает, пока суммы — numeric; при целых суммах 3 / 2 сначала даст 1. Приведение до деления надёжнее."
+    },
+    {
+      "id": "null-cmp",
+      "task": "Проверить в psql, что сравнение с NULL даёт NULL, а IS DISTINCT FROM — true.",
+      "hint": "SELECT с NULL::uuid и gen_random_uuid().",
+      "solution": "SELECT (NULL::uuid != gen_random_uuid()) IS NULL;          -- t\nSELECT NULL::uuid IS DISTINCT FROM gen_random_uuid();       -- t",
+      "language": "sql",
+      "note": "Проверено на PostgreSQL 16."
+    },
+    {
+      "id": "int-div",
+      "task": "Показать в psql, что деление сумм целых чисел — целочисленное.",
+      "hint": "Таблица с int-колонками, SUM(w) / SUM(l) и то же с CAST.",
+      "solution": "CREATE TEMP TABLE g (w int, l int);\nINSERT INTO g VALUES (1,0),(1,0),(1,0),(0,1),(0,1);\nSELECT SUM(w) / SUM(l) FROM g;                   -- 1\nSELECT CAST(SUM(w) AS float) / SUM(l) FROM g;    -- 1.5",
+      "language": "sql",
+      "note": "Проверено на PostgreSQL 16: 3 победы и 2 поражения — сценарий из README."
+    },
+    {
+      "id": "sqlalchemy-case",
+      "task": "Записать счётчик поражений на SQLAlchemy.",
+      "hint": "func.sum(case((and_(…, or_(col.is_(None), col != other)), 1), else_=0)).",
+      "solution": "func.sum(\n    case(\n        (\n            and_(\n                user_games.c.status == GameStatus.WON,\n                or_(\n                    user_games.c.winner_uuid.is_(None),\n                    user_games.c.winner_uuid != user_games.c.user_uuid,\n                ),\n            ),\n            1,\n        ),\n        else_=0,\n    )\n).label(\"losses\")",
+      "language": "python",
+      "note": "Из PostgresGameRepository.get_leaderboard."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему в проекте поражения компьютеру не попадали в счётчик losses при условии winner_uuid != user_uuid?",
+      "options": [
+        "Компьютер не записывается в games",
+        "Ошибка UNION ALL",
+        "При победе компьютера winner_uuid = NULL, а NULL != x даёт NULL — CASE уходил в ELSE 0",
+        "losses считались только для player1"
+      ],
+      "correctIndex": 2,
+      "explanation": "Исправление — winner_uuid IS NULL OR winner_uuid != user_uuid. Сценарий «1 победа, 2 поражения»: было 1, стало 0.5."
+    },
+    {
+      "id": "q2",
+      "question": "Почему win_ratio приходил в JSON строкой \"1.5000000000000000\"?",
+      "options": [
+        "Деление дало NUMERIC → Python Decimal → Flask сериализует Decimal строкой",
+        "Ошибка jsonify",
+        "PostgreSQL возвращает текст",
+        "Так задано в модели ответа"
+      ],
+      "correctIndex": 0,
+      "explanation": "Исправлено через CAST(… AS FLOAT): float сериализуется числом."
+    },
+    {
+      "id": "q3",
+      "question": "Что вернёт PostgreSQL на SELECT SUM(w) / SUM(l), если w и l — integer, а суммы 3 и 2?",
+      "options": ["1.5", "1.5000000000000000", "Ошибку типа", "1"],
+      "correctIndex": 3,
+      "explanation": "SUM(integer) — bigint, bigint / bigint — целочисленное деление. Проверено на PostgreSQL 16."
+    },
+    {
+      "id": "q4",
+      "question": "Зачем в подзапросе участий UNION ALL, а не UNION?",
+      "options": [
+        "UNION ALL быстрее, а результат тот же",
+        "Одинаковые строки — это разные партии; UNION схлопнул бы их, и статистика стала бы неверной",
+        "UNION не работает с UUID",
+        "Разницы нет"
+      ],
+      "correctIndex": 1,
+      "explanation": "Две победы одного игрока над компьютером дают две одинаковые строки (user, WON, user). UNION оставил бы одну."
+    }
+  ]
+}

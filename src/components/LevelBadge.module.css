@@ -1,0 +1,20 @@
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.beginner {
+  color: var(--success);
+}
+
+.intermediate {
+  color: #d97706;
+}
+
+.advanced {
+  color: var(--error);
+}

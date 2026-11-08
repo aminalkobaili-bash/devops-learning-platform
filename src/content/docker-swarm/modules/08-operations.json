@@ -1,0 +1,103 @@
+{
+  "id": "08-operations",
+  "theoryFile": "08-operations.md",
+  "practice": [
+    {
+      "id": "jvm-limits",
+      "task": "Ограничить Java-сервис: контейнер не больше 512M, куча JVM — 192M, лёгкий сборщик мусора, гарантированные 384M.",
+      "hint": "JAVA_TOOL_OPTIONS и deploy.resources.",
+      "solution": "session-service:\n  environment:\n    JAVA_TOOL_OPTIONS: \"-Xmx192m -XX:+UseSerialGC\"\n  deploy:\n    resources:\n      limits:\n        memory: 512M\n      reservations:\n        memory: 384M",
+      "language": "yaml"
+    },
+    {
+      "id": "max-ram",
+      "task": "Задать кучу JVM процентом от лимита контейнера, а не фиксированным числом.",
+      "hint": "-XX:MaxRAMPercentage (Java 8u191+).",
+      "solution": "environment:\n  JAVA_TOOL_OPTIONS: \"-XX:MaxRAMPercentage=40 -XX:+UseSerialGC\"",
+      "language": "yaml",
+      "note": "Задачи нет в проекте. 40% от 512M ≈ 205M — близко к текущим 192M, но подстроится при изменении лимита."
+    },
+    {
+      "id": "newman",
+      "task": "Прогнать коллекцию Postman против стенда в консоли.",
+      "hint": "npx newman run.",
+      "solution": "npx newman run tests/application-tests.postman_collection.json",
+      "language": "bash",
+      "note": "В проекте: 5 запросов, 5 проверок, 0 ошибок."
+    },
+    {
+      "id": "chain",
+      "task": "Убедиться, что бронирование прошло всю асинхронную цепочку: очередь RabbitMQ обработана, статистика записана.",
+      "hint": "rabbitmqctl list_queues и SELECT count(*) в statistics_db.",
+      "solution": "docker compose exec rabbitmq rabbitmqctl list_queues name messages consumers\n# booking_queue  0  1\ndocker compose exec database psql -U postgres -d statistics_db -tAc \"select count(*) from booking_statistics\"\n# 61",
+      "language": "bash",
+      "note": "Из README."
+    },
+    {
+      "id": "failed-tasks",
+      "task": "Найти причину упавших и отклонённых задач rabbitmq в Swarm.",
+      "hint": "docker service ps с --no-trunc, затем проверить место и образ на ноде.",
+      "solution": "docker service ps myapp_rabbitmq --no-trunc\n# на ноде из столбца NODE (например, worker01):\ndf -h /var/lib/docker\ndocker system df\ndocker pull rabbitmq:4.3.7-management-alpine",
+      "language": "bash",
+      "note": "В проекте причины Rejected (failed to prepare extraction) не разбирались — это план диагностики."
+    },
+    {
+      "id": "stats",
+      "task": "Посмотреть реальное потребление памяти контейнерами на ноде.",
+      "hint": "docker stats без потокового режима.",
+      "solution": "docker stats --no-stream --format 'table {{.Name}}\\t{{.MemUsage}}\\t{{.MemPerc}}'",
+      "language": "bash",
+      "note": "MemUsage покажет «использовано / лимит» — видно, далеко ли JVM от 512M."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Лимит контейнера 512M. Почему -Xmx512m приведёт к OOM kill?",
+      "options": [
+        "Xmx нельзя задавать в контейнере",
+        "Память JVM — это не только куча: metaspace, стеки потоков, JIT, буферы — процесс превысит лимит",
+        "JVM игнорирует Xmx",
+        "Из-за SerialGC"
+      ],
+      "correctIndex": 1,
+      "explanation": "Поэтому в проекте куча 192M при лимите 512M."
+    },
+    {
+      "id": "q2",
+      "question": "Задача в docker stack ps в состоянии Rejected. Где искать причину?",
+      "options": [
+        "Ошибка на ноде до старта контейнера: образ не скачался или не распаковался, нет места, нет доступа к registry",
+        "В логах приложения",
+        "В nginx",
+        "В .env"
+      ],
+      "correctIndex": 0,
+      "explanation": "Failed с non-zero exit — упало приложение (смотри логи). Rejected — проблема с запуском контейнера на ноде."
+    },
+    {
+      "id": "q3",
+      "question": "Тест Book Hotel вернул 201. Достаточно ли этого, чтобы считать бронирование полностью обработанным?",
+      "options": [
+        "Да, 201 означает успех",
+        "Да, если ответ пришёл быстрее 10 секунд",
+        "Нет — 201 подтверждает только приём запроса; асинхронную часть проверяют по очереди RabbitMQ и записям в statistics_db",
+        "Нет, нужен код 200"
+      ],
+      "correctIndex": 2,
+      "explanation": "В проекте: booking_queue 0 сообщений и 1 потребитель, 61 строка статистики."
+    },
+    {
+      "id": "q4",
+      "question": "Задача висит в состоянии Pending. Вероятная причина?",
+      "options": [
+        "Образ не найден",
+        "Приложение упало",
+        "Нет сети",
+        "Планировщику некуда её поставить: не хватает ресурсов под reservations или нет ноды под placement constraints"
+      ],
+      "correctIndex": 3,
+      "explanation": "Проверка: docker service ps --no-trunc покажет «insufficient resources» или «no suitable node»."
+    }
+  ]
+}

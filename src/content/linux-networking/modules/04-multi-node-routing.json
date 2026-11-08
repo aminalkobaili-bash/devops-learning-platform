@@ -1,0 +1,104 @@
+{
+  "id": "04-multi-node-routing",
+  "theoryFile": "04-multi-node-routing.md",
+  "practice": [
+    {
+      "id": "ip-forward",
+      "task": "Включить пересылку пакетов на r1 и r2 — сразу и так, чтобы настройка пережила перезагрузку.",
+      "hint": "sysctl -w для немедленного эффекта, строка в /etc/sysctl.conf + sysctl -p для постоянного.",
+      "solution": "sudo sysctl -w net.ipv4.ip_forward=1\necho 'net.ipv4.ip_forward=1' | sudo tee -a /etc/sysctl.conf\nsudo sysctl -p\nsysctl net.ipv4.ip_forward",
+      "language": "bash",
+      "note": "Файл из репозитория: configs/multi-node/r1/sysctl.conf (и r2/). Без ip_forward роутер молча отбрасывает транзитные пакеты."
+    },
+    {
+      "id": "r1-netplan",
+      "task": "Настроить r1: адреса 10.10.0.1/18 на enp0s3 и 10.100.0.11/16 на enp0s8, маршрут к 10.20.0.0/26 через r2.",
+      "hint": "Маршрут — в routes: того интерфейса, через который виден r2.",
+      "solution": "network:\n  ethernets:\n    enp0s3:\n      dhcp4: no\n      addresses:\n        - 10.10.0.1/18\n    enp0s8:\n      dhcp4: no\n      addresses:\n        - 10.100.0.11/16\n      routes:\n        - to: 10.20.0.0/26\n          via: 10.100.0.12\n  version: 2",
+      "language": "yaml",
+      "note": "configs/multi-node/r1/netplan.yaml. Для r2 — зеркально: 10.10.0.0/18 via 10.100.0.11."
+    },
+    {
+      "id": "longest-prefix",
+      "task": "На ws11 показать, что для своей сети используется connected-маршрут /18, а не маршрут по умолчанию.",
+      "hint": "ip r list для конкретного префикса; ip route get — для адреса.",
+      "solution": "ip r list 10.10.0.0/18\nip r list 0.0.0.0/0\nip route get 10.10.0.5",
+      "language": "bash",
+      "note": "В проекте: /18 — connected, 0.0.0.0/0 — default via 10.10.0.1. ip route get добавлен для наглядности."
+    },
+    {
+      "id": "traceroute",
+      "task": "С ws11 проследить путь до ws21 и одновременно посмотреть на r1 пробы traceroute.",
+      "hint": "traceroute на ws11, tcpdump на r1 с подробным выводом.",
+      "solution": "# r1\nsudo tcpdump -tnv -i enp0s3\n\n# ws11\ntraceroute 10.20.0.10",
+      "language": "bash",
+      "note": "В проекте: 10.10.0.1 → 10.100.0.12 → 10.20.0.10. В tcpdump — UDP на 33442–33445 с растущим TTL и ICMP udp port unreachable от цели."
+    },
+    {
+      "id": "unreachable",
+      "task": "Отправить ping в несуществующую сеть 10.30.0.111 с ws11 и найти ICMP-ошибку на r1.",
+      "hint": "tcpdump на r1 с фильтром icmp.",
+      "solution": "# r1\nsudo tcpdump -n -i enp0s3 icmp\n\n# ws11\nping -c 3 10.30.0.111",
+      "language": "bash",
+      "note": "В проекте: r1 ответил Destination Net Unreachable — у него нет маршрута в 10.30.0.0."
+    },
+    {
+      "id": "ttl",
+      "task": "По ответу ping определить, через сколько роутеров прошёл пакет от r1 до ws22.",
+      "hint": "Linux отправляет с TTL 64. Смотри поле ttl в ответе.",
+      "solution": "ping -c 2 10.20.0.20   # с r1\n# ttl=63 → 64 − 63 = 1 роутер (r2)",
+      "language": "bash",
+      "note": "Значение ttl 63 есть в проекте — на этапе NAT (модуль 06)."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "На r1 есть маршрут к сети ws21, ip_forward = 1, но ping от ws11 до ws21 не проходит, хотя tcpdump на ws21 видит echo request. Чего не хватает?",
+      "options": [
+        "ip_forward на ws11",
+        "Обратного маршрута на r2 к 10.10.0.0/18",
+        "DNS-сервера",
+        "Маршрута по умолчанию на r1"
+      ],
+      "correctIndex": 1,
+      "explanation": "Запрос дошёл, ответ ws21 отправил на свой шлюз r2. У r2 нет маршрута к сети ws11 — ответ теряется. Маршрутизация всегда в обе стороны."
+    },
+    {
+      "id": "q2",
+      "question": "На хосте маршруты 0.0.0.0/0 via 10.10.0.1 и 10.10.0.0/18 dev enp0s3. Какой будет выбран для 10.10.5.5?",
+      "options": [
+        "Тот, что добавлен первым",
+        "Default — он всегда приоритетнее",
+        "10.10.0.0/18 — у него длиннее префикс",
+        "Оба по очереди"
+      ],
+      "correctIndex": 2,
+      "explanation": "Longest prefix match: /18 точнее /0. Default срабатывает, только когда не подходит ничего другого."
+    },
+    {
+      "id": "q3",
+      "question": "Как traceroute узнаёт адреса промежуточных роутеров?",
+      "options": [
+        "Отправляет пакеты с TTL 1, 2, 3…, и каждый роутер, обнуливший TTL, отвечает ICMP Time Exceeded со своего адреса",
+        "Запрашивает таблицу маршрутизации у каждого роутера",
+        "Через DNS",
+        "Читает их из ARP-таблицы"
+      ],
+      "correctIndex": 0,
+      "explanation": "Цель в конце отвечает ICMP port unreachable — для UDP-проб на закрытый порт. Так в проекте и было видно в tcpdump на r1."
+    },
+    {
+      "id": "q4",
+      "question": "ping 10.30.0.111 возвращает From 10.10.0.1 … Destination Net Unreachable. Что это значит?",
+      "options": [
+        "Хост 10.30.0.111 выключен",
+        "Нет связи с 10.10.0.1",
+        "На хосте закрыт порт",
+        "Роутер 10.10.0.1 не знает маршрута в сеть 10.30.0.0"
+      ],
+      "correctIndex": 3,
+      "explanation": "Ответ пришёл от роутера, а не от цели. Net Unreachable — нет маршрута в сеть; Host Unreachable — сеть есть, а хост не отвечает на ARP."
+    }
+  ]
+}

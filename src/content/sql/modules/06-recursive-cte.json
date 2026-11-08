@@ -1,0 +1,91 @@
+{
+  "id": "06-recursive-cte",
+  "theoryFile": "06-recursive-cte.md",
+  "practice": [
+    {
+      "id": "warmup",
+      "task": "Разминка (не из репозитория): вывести числа от 1 до 5 с помощью WITH RECURSIVE, без generate_series.",
+      "hint": "Якорь — SELECT 1. Рекурсивная часть прибавляет 1, пока n < 5.",
+      "solution": "WITH RECURSIVE nums AS (\n  SELECT 1 AS n\n  UNION ALL\n  SELECT n + 1 FROM nums WHERE n < 5\n)\nSELECT n FROM nums;",
+      "language": "sql",
+      "note": "Условие n < 5 — то, что останавливает рекурсию. Без него запрос будет выполняться бесконечно."
+    },
+    {
+      "id": "ex00 · шаг 1",
+      "task": "Создать таблицу routes (point1, point2, cost) для графа из таблицы в теории: пара городов уникальна, ребро из города в него же запрещено. Заполнить рёбрами в обе стороны.",
+      "hint": "Составной PRIMARY KEY (point1, point2) и CHECK (point1 <> point2). Каждое ребро — две строки.",
+      "solution": "DROP TABLE IF EXISTS routes;\n\nCREATE TABLE routes (\n  point1 VARCHAR(1),\n  point2 VARCHAR(1),\n  cost INTEGER,\n  PRIMARY KEY (point1, point2),\n  CHECK (point1 <> point2)\n);\n\nINSERT INTO routes (point1, point2, cost) VALUES\n  ('a', 'b', 10), ('b', 'a', 10),\n  ('a', 'c', 15), ('c', 'a', 15),\n  ('a', 'd', 20), ('d', 'a', 20),\n  ('b', 'c', 35), ('c', 'b', 35),\n  ('b', 'd', 25), ('d', 'b', 25),\n  ('c', 'd', 30), ('d', 'c', 30);",
+      "language": "sql",
+      "note": "DROP TABLE IF EXISTS в начале делает скрипт перезапускаемым."
+    },
+    {
+      "id": "ex00 · шаг 2",
+      "task": "Написать рекурсивный CTE paths: все пути из a без повторных городов. Колонки: point1 (старт), point2 (текущий город), cost (накопленная стоимость), tour (массив пройденных городов).",
+      "hint": "Якорь — рёбра из a, tour = ARRAY[point1, point2]. Рекурсия — JOIN routes по p.point2 = r.point1 с условием r.point2 <> ALL(p.tour).",
+      "solution": "WITH RECURSIVE paths AS (\n  SELECT point1,\n         point2,\n         cost,\n         ARRAY[point1::text, point2::text] AS tour\n  FROM routes\n  WHERE point1 = 'a'\n\n  UNION ALL\n\n  SELECT p.point1,\n         r.point2,\n         p.cost + r.cost,\n         p.tour || r.point2::text\n  FROM paths p\n  JOIN routes r ON p.point2 = r.point1\n  WHERE r.point2 <> ALL(p.tour)\n)\nSELECT * FROM paths;",
+      "language": "sql",
+      "note": "Должно получиться 15 строк: 3 пути длины 2, 6 — длины 3, 6 — длины 4. ::text нужен, чтобы тип tour (text[]) совпадал в якоре и рекурсивной части."
+    },
+    {
+      "id": "ex00 · шаг 3",
+      "task": "Добавить CTE final_paths (полные маршруты: 4 города + возврат в a, колонки total_cost и tour) и вывести маршруты с минимальной стоимостью, сортировка по total_cost и tour.",
+      "hint": "Пути с array_length(tour, 1) = 4 соединить с ребром, ведущим в a. Минимум — через подзапрос с MIN, а не LIMIT 1.",
+      "solution": "WITH RECURSIVE paths AS (\n  SELECT point1,\n         point2,\n         cost,\n         ARRAY[point1::text, point2::text] AS tour\n  FROM routes\n  WHERE point1 = 'a'\n\n  UNION ALL\n\n  SELECT p.point1,\n         r.point2,\n         p.cost + r.cost,\n         p.tour || r.point2::text\n  FROM paths p\n  JOIN routes r ON p.point2 = r.point1\n  WHERE r.point2 <> ALL(p.tour)\n),\n\nfinal_paths AS (\n  SELECT p.cost + r.cost AS total_cost,\n         p.tour || r.point2 AS tour\n  FROM paths p\n  JOIN routes r ON p.point2 = r.point1\n  WHERE r.point2 = 'a'\n    AND array_length(p.tour, 1) = 4\n)\n\nSELECT total_cost, tour\nFROM final_paths\nWHERE total_cost = (SELECT MIN(total_cost) FROM final_paths)\nORDER BY total_cost, tour;",
+      "language": "sql",
+      "note": "Ответ: два маршрута по 80 — {a,b,d,c,a} и {a,c,d,b,a}. Это один и тот же цикл в разных направлениях."
+    },
+    {
+      "id": "ex01",
+      "task": "Используя ту же логику, вывести маршруты и с минимальной, и с максимальной стоимостью одним результатом. Сортировка по total_cost и tour.",
+      "hint": "Две выборки из final_paths — с MIN и с MAX — склеить через UNION ALL.",
+      "solution": "WITH RECURSIVE paths AS (\n  SELECT point1,\n         point2,\n         cost,\n         ARRAY[point1::text, point2::text] AS tour\n  FROM routes\n  WHERE point1 = 'a'\n\n  UNION ALL\n\n  SELECT p.point1,\n         r.point2,\n         p.cost + r.cost,\n         p.tour || r.point2::text\n  FROM paths p\n  JOIN routes r ON p.point2 = r.point1\n  WHERE r.point2 <> ALL(p.tour)\n),\n\nfinal_paths AS (\n  SELECT p.cost + r.cost AS total_cost,\n         p.tour || r.point2 AS tour\n  FROM paths p\n  JOIN routes r ON p.point2 = r.point1\n  WHERE r.point2 = 'a'\n    AND array_length(p.tour, 1) = 4\n)\n\nSELECT total_cost, tour\nFROM final_paths\nWHERE total_cost = (SELECT MIN(total_cost) FROM final_paths)\n\nUNION ALL\n\nSELECT total_cost, tour\nFROM final_paths\nWHERE total_cost = (SELECT MAX(total_cost) FROM final_paths)\n\nORDER BY total_cost, tour;",
+      "language": "sql",
+      "note": "Ответ: 2 маршрута по 80 и 4 маршрута по 95 — всего 6, то есть все возможные. В этом графе у полных маршрутов только две разные стоимости."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Когда останавливается выполнение WITH RECURSIVE?",
+      "options": [
+        "После 100 итераций — это встроенный лимит PostgreSQL",
+        "Когда якорь вернул 0 строк",
+        "Когда в результате появилась повторяющаяся строка",
+        "Когда рекурсивная часть на очередной итерации вернула 0 строк"
+      ],
+      "correctIndex": 3,
+      "explanation": "Встроенного лимита нет. Рекурсивная часть выполняется над строками прошлой итерации, и как только новых строк нет — рекурсия завершается. Если условие этого не обеспечивает, запрос не закончится."
+    },
+    {
+      "id": "q2",
+      "question": "Что вернёт 'b' <> ALL(ARRAY['a', 'b', 'c'])?",
+      "options": [
+        "true — 'b' не равен 'a' и 'c'",
+        "false — 'b' равен одному из элементов",
+        "NULL",
+        "Ошибку: ALL работает только с подзапросами"
+      ],
+      "correctIndex": 1,
+      "explanation": "<> ALL истинно, только если значение не равно ни одному элементу. 'b' есть в массиве, поэтому false. Так в ex00 отсекаются уже посещённые города."
+    },
+    {
+      "id": "q3",
+      "question": "Зачем в якоре написано ARRAY[point1::text, point2::text], хотя point1 и point2 — VARCHAR(1)?",
+      "options": [
+        "Тип колонки tour в якоре и рекурсивной части должен совпадать — приводим всё к text[]",
+        "VARCHAR нельзя хранить в массивах",
+        "Без ::text массив будет отсортирован по алфавиту",
+        "Это ускоряет оператор <> ALL"
+      ],
+      "correctIndex": 0,
+      "explanation": "Рекурсивный CTE требует совпадения типов колонок в обеих частях UNION ALL. Явное ::text в обеих частях гарантирует, что tour везде text[]."
+    },
+    {
+      "id": "q4",
+      "question": "Сколько разных полных маршрутов существует из a через остальные 3 города и обратно в a?",
+      "options": ["3", "4", "6", "24"],
+      "correctIndex": 2,
+      "explanation": "Порядок обхода трёх городов — 3! = 6 перестановок. В общем случае (n − 1)!, поэтому перебор быстро становится непосильным."
+    }
+  ]
+}

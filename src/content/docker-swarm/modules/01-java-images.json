@@ -1,0 +1,94 @@
+{
+  "id": "01-java-images",
+  "theoryFile": "01-java-images.md",
+  "practice": [
+    {
+      "id": "builder",
+      "task": "Написать builder-стадию для Spring Boot сервиса, который выбирается аргументом SERVICE: сначала скачать зависимости по pom.xml, затем собрать jar без тестов. Кеш Maven — между сборками.",
+      "hint": "ARG после FROM, COPY pom.xml → RUN go-offline → COPY src → RUN package; --mount=type=cache,target=/root/.m2.",
+      "solution": "# syntax=docker/dockerfile:1\nFROM maven:3.9.16-eclipse-temurin-8 AS builder\nARG SERVICE\nWORKDIR /app\nCOPY services/${SERVICE}/pom.xml .\nRUN --mount=type=cache,target=/root/.m2 mvn -B dependency:go-offline\nCOPY services/${SERVICE}/src ./src\nRUN --mount=type=cache,target=/root/.m2 mvn -B clean package -DskipTests",
+      "language": "dockerfile",
+      "note": "Из docker/Dockerfile.java-service."
+    },
+    {
+      "id": "runtime",
+      "task": "Написать runtime-стадию: только JRE, пользователь app с UID 10001, jar из builder, исполняемый wait-for-it.sh.",
+      "hint": "useradd --system --uid, COPY --from, COPY --chmod, USER.",
+      "solution": "FROM eclipse-temurin:8u504-b01-jre-noble\nRUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app\nWORKDIR /app\nCOPY --from=builder /app/target/*.jar app.jar\nCOPY --chmod=0755 docker/wait-for-it.sh wait-for-it.sh\nUSER app\nENTRYPOINT [\"./wait-for-it.sh\", \"database:5432\", \"--\", \"java\", \"-jar\", \"app.jar\"]",
+      "language": "dockerfile"
+    },
+    {
+      "id": "build",
+      "task": "Собрать образы всех семи сервисов из одного Dockerfile циклом.",
+      "hint": "for по именам, --build-arg SERVICE.",
+      "solution": "for s in session hotel booking payment loyalty report gateway; do\n  docker build -f docker/Dockerfile.java-service \\\n    --build-arg SERVICE=$s-service -t aminblack/$s-service:latest .\ndone",
+      "language": "bash",
+      "note": "Из README проекта (раздел про Swarm)."
+    },
+    {
+      "id": "whoami",
+      "task": "Проверить, от какого пользователя работает сервис в контейнере.",
+      "hint": "docker compose exec … id.",
+      "solution": "docker compose exec session-service id\n# uid=10001(app) gid=999(app) groups=999(app)",
+      "language": "bash"
+    },
+    {
+      "id": "sizes",
+      "task": "Сравнить сжатый размер образов сервисов.",
+      "hint": "docker image inspect с шаблоном .Size, перевести в MB.",
+      "solution": "for s in booking session hotel gateway; do\n  printf '%s ' \"$s-service\"\n  docker image inspect --format '{{.Size}}' docker-compose-microservices-$s-service \\\n    | awk '{printf \"%.1f MB\\n\", $1/1000/1000}'\ndone",
+      "language": "bash",
+      "note": "В проекте: booking 153.8 → 138.2 MB, gateway 123.0 → 107.4 MB."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Зачем в Dockerfile сначала COPY pom.xml и mvn dependency:go-offline, а потом COPY src?",
+      "options": [
+        "Так требует Maven",
+        "При изменении только кода слой со скачанными зависимостями берётся из кеша — Maven не качает их заново",
+        "Чтобы уменьшить образ",
+        "Чтобы тесты не запускались"
+      ],
+      "correctIndex": 1,
+      "explanation": "Docker пересобирает слой, только если изменились его входные файлы. pom.xml меняется редко, код — часто."
+    },
+    {
+      "id": "q2",
+      "question": "Чем RUN --mount=type=cache,target=/root/.m2 отличается от обычного кеша слоёв?",
+      "options": [
+        "Каталог сохраняется в кеше BuildKit между сборками и не попадает в образ; при изменении pom.xml докачиваются только новые зависимости",
+        "Ничем",
+        "Он ускоряет запуск контейнера",
+        "Он кеширует готовый jar"
+      ],
+      "correctIndex": 0,
+      "explanation": "Кеш слоя инвалидируется целиком при изменении pom.xml, cache mount — нет."
+    },
+    {
+      "id": "q3",
+      "question": "Где доступна переменная, объявленная через ARG SERVICE?",
+      "options": [
+        "В работающем контейнере как переменная окружения",
+        "Во всех стадиях Dockerfile",
+        "Только при сборке, в той стадии, где объявлена",
+        "Только в docker-compose.yml"
+      ],
+      "correctIndex": 2,
+      "explanation": "ARG — параметр сборки. Для переменной в контейнере нужен ENV."
+    },
+    {
+      "id": "q4",
+      "question": "Почему Java-пакет Communication/Aux не создавался при клонировании на Windows?",
+      "options": [
+        "Слишком длинный путь",
+        "Git не поддерживает заглавные буквы",
+        "Конфликт с Maven",
+        "AUX — зарезервированное имя устройства в Windows, как CON, NUL, PRN"
+      ],
+      "correctIndex": 3,
+      "explanation": "Найдено и исправлено в проекте: пакет переименован в Auxiliary."
+    }
+  ]
+}

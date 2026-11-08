@@ -1,0 +1,103 @@
+{
+  "id": "05-dhcp",
+  "theoryFile": "05-dhcp.md",
+  "practice": [
+    {
+      "id": "r2-config",
+      "task": "Настроить DHCP-сервер на r2: выдавать адреса 10.20.0.2–10.20.0.50 в сети 10.20.0.0/26, шлюз 10.20.0.1, слушать только enp0s8.",
+      "hint": "Два файла: /etc/default/isc-dhcp-server (интерфейс) и /etc/dhcp/dhcpd.conf (subnet с range и options).",
+      "solution": "sudo apt install isc-dhcp-server\n\n# /etc/default/isc-dhcp-server\nINTERFACESv4=\"enp0s8\"\n\n# /etc/dhcp/dhcpd.conf\nsubnet 10.100.0.0 netmask 255.255.0.0 {\n}\n\nsubnet 10.20.0.0 netmask 255.255.255.192 {\n    range 10.20.0.2 10.20.0.50;\n    option routers 10.20.0.1;\n    option domain-name-servers 10.20.0.1;\n}\n\nsudo systemctl restart isc-dhcp-server\nsystemctl status isc-dhcp-server",
+      "language": "bash",
+      "note": "Конфиги: configs/multi-node/r2/. domain-name-servers 10.20.0.1 указывает на несуществующий DNS — найденная ошибка. Лучше 8.8.8.8."
+    },
+    {
+      "id": "ws21-client",
+      "task": "Переключить ws21 на DHCP, перезагрузить и проверить адрес и связь с ws22.",
+      "hint": "В Netplan dhcp4: true, без addresses и gateway4.",
+      "solution": "# /etc/netplan/00-installer-config.yaml (ws21)\nnetwork:\n  ethernets:\n    enp0s3:\n      dhcp4: true\n  version: 2\n\nsudo reboot\nip a show enp0s3\nping -c 3 10.20.0.20",
+      "language": "bash",
+      "note": "В проекте: ws21 получила 10.20.0.2/26 dynamic, ping ws22 — 0% loss."
+    },
+    {
+      "id": "dora",
+      "task": "Увидеть все четыре шага DHCP вживую на ws21.",
+      "hint": "dhclient с подробным выводом.",
+      "solution": "sudo dhclient -v enp0s3",
+      "language": "bash",
+      "note": "В проекте: DISCOVER → OFFER → REQUEST → ACK, bound to 10.20.0.3. Старый адрес 10.20.0.2 остался как secondary."
+    },
+    {
+      "id": "release-renew",
+      "task": "Убрать лишний secondary-адрес: отпустить аренду и получить адрес заново.",
+      "hint": "dhclient -r, потом снова dhclient.",
+      "solution": "sudo dhclient -r enp0s3\nsudo dhclient enp0s3\nip a show enp0s3",
+      "language": "bash"
+    },
+    {
+      "id": "r1-reservation",
+      "task": "На r1 настроить выдачу адреса 10.10.0.50 только хосту с MAC 10:10:10:10:10:BA, на ws11 — DHCP с этим MAC.",
+      "hint": "Блок host с hardware ethernet и fixed-address. На клиенте — macaddress в Netplan.",
+      "solution": "# r1: /etc/dhcp/dhcpd.conf\nsubnet 10.10.0.0 netmask 255.255.192.0 {\n    option routers 10.10.0.1;\n    option domain-name-servers 8.8.8.8;\n}\n\nhost ws11 {\n    hardware ethernet 10:10:10:10:10:BA;\n    fixed-address 10.10.0.50;\n}\n\n# ws11: /etc/netplan/00-installer-config.yaml\nnetwork:\n  ethernets:\n    enp0s3:\n      dhcp4: true\n      macaddress: 10:10:10:10:10:BA\n  version: 2",
+      "language": "bash",
+      "note": "В проекте цикл не завершился: r1 отправлял OFFER, но ws11 адрес не получил. Гипотеза — VirtualBox не доставляет кадры на подменённый MAC (см. теорию)."
+    },
+    {
+      "id": "debug",
+      "task": "Продиагностировать незавершённый DHCP на ws11: доходит ли OFFER до клиента?",
+      "hint": "tcpdump на портах 67/68 с выводом MAC-адресов — на r1 и на ws11 одновременно.",
+      "solution": "# r1 и ws11\nsudo tcpdump -n -e -i enp0s3 port 67 or port 68\n\n# ws11, в другом терминале\nsudo dhclient -v enp0s3\n\n# r1: журнал сервера\njournalctl -u isc-dhcp-server -f",
+      "language": "bash",
+      "note": "Этой проверки в проекте не было — это следующий шаг из примечания 3 README. Если OFFER виден на r1, но не на ws11, — кадр теряется в VirtualBox."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "В каком порядке идут сообщения DHCP?",
+      "options": [
+        "REQUEST → OFFER → DISCOVER → ACK",
+        "DISCOVER → REQUEST → OFFER → ACK",
+        "DISCOVER → OFFER → REQUEST → ACK",
+        "OFFER → DISCOVER → ACK → REQUEST"
+      ],
+      "correctIndex": 2,
+      "explanation": "DORA: клиент ищет сервер, сервер предлагает адрес, клиент запрашивает предложенный, сервер подтверждает."
+    },
+    {
+      "id": "q2",
+      "question": "Почему в проекте DHCP-сервер стоит на каждом роутере, а не один на всю сеть?",
+      "options": [
+        "DISCOVER — broadcast, а broadcast не проходит через роутер",
+        "isc-dhcp-server не умеет обслуживать больше одной подсети",
+        "Так быстрее",
+        "Для резервирования"
+      ],
+      "correctIndex": 0,
+      "explanation": "Клиент без адреса может только кричать в свой сегмент. Чтобы один сервер обслуживал несколько сетей, на роутерах настраивают DHCP relay."
+    },
+    {
+      "id": "q3",
+      "question": "Пул r2 — 10.20.0.2–10.20.0.50, а у ws22 статический 10.20.0.20. В чём риск?",
+      "options": [
+        "Никакого: сервер знает про статические адреса",
+        "ws22 не сможет пинговать роутер",
+        "DHCP-сервер перестанет запускаться",
+        "Сервер может выдать 10.20.0.20 другому клиенту — получится конфликт адресов"
+      ],
+      "correctIndex": 3,
+      "explanation": "dhcpd ничего не знает об адресах, назначенных вручную. Статические адреса держат вне пула или оформляют резервированием (host … fixed-address)."
+    },
+    {
+      "id": "q4",
+      "question": "В логе сервера есть DHCPDISCOVER и DHCPOFFER, но нет DHCPREQUEST, и DISCOVER повторяется. Где проблема?",
+      "options": [
+        "Сервер не нашёл резервирование",
+        "Клиент не получил или не принял OFFER — проблема на пути от сервера к клиенту или на клиенте",
+        "Неверный range",
+        "Сервер не запущен"
+      ],
+      "correctIndex": 1,
+      "explanation": "Сервер свою часть сделал. Ровно этот случай в проекте на r1 — дальше нужен tcpdump на обеих сторонах."
+    }
+  ]
+}

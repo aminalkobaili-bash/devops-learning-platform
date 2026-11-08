@@ -1,0 +1,75 @@
+.back {
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.header {
+  margin: 16px 0 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header h1 {
+  margin: 6px 0 14px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toc button {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.toc button:hover {
+  border-color: var(--accent);
+}
+
+.section {
+  margin-bottom: 40px;
+  scroll-margin-top: 72px;
+}
+
+.sectionTitle {
+  margin: 0 0 14px;
+  font-size: 1.3rem;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.pager a {
+  text-decoration: none;
+}

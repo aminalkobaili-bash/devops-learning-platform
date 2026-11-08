@@ -1,0 +1,103 @@
+{
+  "id": "04-dockerfile",
+  "theoryFile": "04-dockerfile.md",
+  "practice": [
+    {
+      "id": "apt-layer",
+      "task": "Установить в образ nginx, spawn-fcgi и curl одной инструкцией так, чтобы кеш apt не остался в образе.",
+      "hint": "update && install --no-install-recommends && rm -rf /var/lib/apt/lists/* в одной RUN.",
+      "solution": "RUN apt-get update && \\\n    apt-get install -y --no-install-recommends \\\n        libfcgi0t64 \\\n        spawn-fcgi \\\n        nginx \\\n        curl && \\\n    rm -rf /var/lib/apt/lists/*",
+      "language": "dockerfile",
+      "note": "Из runtime-стадии docker/Dockerfile."
+    },
+    {
+      "id": "entrypoint",
+      "task": "Написать entrypoint.sh: запустить FastCGI в фоне, проверить конфиг nginx и запустить nginx как главный процесс контейнера.",
+      "hint": "set -e, spawn-fcgi, nginx -t, exec nginx -g \"daemon off;\".",
+      "solution": "#!/bin/bash\nset -e\n\nspawn-fcgi -a 127.0.0.1 -p 8080 -f /server/server\nnginx -t\nexec nginx -g \"daemon off;\"",
+      "language": "bash",
+      "note": "Сокращённый docker/entrypoint.sh (без echo)."
+    },
+    {
+      "id": "pid1",
+      "task": "Убедиться, что PID 1 в контейнере — nginx, а не bash, и что процессы работают не от root.",
+      "hint": "docker exec + ps с колонками user, pid, args.",
+      "solution": "docker exec fastcgi-server ps -eo user,pid,args",
+      "language": "bash",
+      "note": "В проекте: appuser 1 nginx: master process …"
+    },
+    {
+      "id": "stop-time",
+      "task": "Измерить, сколько времени занимает docker stop. Почему с exec он быстрый, а без exec — около 10 секунд?",
+      "hint": "time docker stop.",
+      "solution": "time docker stop fastcgi-server",
+      "language": "bash",
+      "note": "С exec nginx получает SIGTERM и завершается сразу. Без exec PID 1 — bash, он не передаёт сигнал, и Docker ждёт таймаут 10 с перед SIGKILL."
+    },
+    {
+      "id": "build-run",
+      "task": "Собрать образ из docker/Dockerfile с тегом docker-nginx-fastcgi:1.0 и посмотреть его слои.",
+      "hint": "docker build -f … -t … . и docker history.",
+      "solution": "docker build -f docker/Dockerfile -t docker-nginx-fastcgi:1.0 .\ndocker history docker-nginx-fastcgi:1.0",
+      "language": "bash"
+    },
+    {
+      "id": "crlf",
+      "task": "Защитить shell-скрипты от Windows-окончаний строк при клонировании репозитория на Windows.",
+      "hint": "Файл .gitattributes в корне репозитория.",
+      "solution": "# .gitattributes\n* text=auto eol=lf",
+      "language": "bash",
+      "note": "Из проекта. Признак проблемы — /bin/bash^M: bad interpreter при старте контейнера."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Зачем в конце entrypoint.sh стоит exec nginx, а не просто nginx?",
+      "options": [
+        "Так nginx запускается быстрее",
+        "exec заменяет процесс bash на nginx — nginx становится PID 1 и получает SIGTERM от docker stop",
+        "Без exec nginx не прочитает конфиг",
+        "exec запускает nginx от root"
+      ],
+      "correctIndex": 1,
+      "explanation": "Без exec PID 1 — bash, сигнал до nginx не дойдёт, и через 10 секунд Docker убьёт контейнер SIGKILL."
+    },
+    {
+      "id": "q2",
+      "question": "Почему apt-get update и apt-get install пишут в одной инструкции RUN?",
+      "options": [
+        "Отдельный RUN apt-get update закешируется, и при следующей сборке install возьмёт устаревшие списки пакетов",
+        "Docker не разрешает два RUN подряд",
+        "Так образ собирается без интернета",
+        "Иначе apt не найдёт пакеты"
+      ],
+      "correctIndex": 0,
+      "explanation": "Кеш слоя смотрит только на текст инструкции, а не на актуальность репозиториев. Плюс rm -rf /var/lib/apt/lists/* в том же слое реально уменьшает образ."
+    },
+    {
+      "id": "q3",
+      "question": "Что делает инструкция EXPOSE 81?",
+      "options": [
+        "Публикует порт 81 на хосте",
+        "Открывает порт в фаерволе",
+        "Перенаправляет 80 на 81",
+        "Только документирует порт в метаданных образа — для публикации нужен -p или ports:"
+      ],
+      "correctIndex": 3,
+      "explanation": "EXPOSE — подсказка для людей и инструментов (docker run -P публикует все EXPOSE-порты на случайные). Сам по себе порт наружу не открывается."
+    },
+    {
+      "id": "q4",
+      "question": "Зачем nginx в контейнере запускают с daemon off;?",
+      "options": [
+        "Чтобы отключить логи",
+        "Чтобы nginx работал от root",
+        "Иначе nginx уйдёт в фон, главный процесс завершится — и контейнер остановится",
+        "Для поддержки FastCGI"
+      ],
+      "correctIndex": 2,
+      "explanation": "Контейнер живёт, пока жив его PID 1. Демонизация в контейнере не нужна — процесс должен работать на переднем плане."
+    }
+  ]
+}

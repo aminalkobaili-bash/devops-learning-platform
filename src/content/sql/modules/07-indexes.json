@@ -1,0 +1,112 @@
+{
+  "id": "07-indexes",
+  "theoryFile": "07-indexes.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Создать B-Tree индексы на все колонки внешних ключей: menu.pizzeria_id, person_order.person_id, person_order.menu_id, person_visits.person_id, person_visits.pizzeria_id. Имена — idx_<таблица>_<колонка>. Скрипт должен быть перезапускаемым.",
+      "hint": "DROP INDEX IF EXISTS перед каждым CREATE INDEX.",
+      "solution": "DROP INDEX IF EXISTS idx_menu_pizzeria_id;\nDROP INDEX IF EXISTS idx_person_order_person_id;\nDROP INDEX IF EXISTS idx_person_order_menu_id;\nDROP INDEX IF EXISTS idx_person_visits_person_id;\nDROP INDEX IF EXISTS idx_person_visits_pizzeria_id;\n\nCREATE INDEX idx_menu_pizzeria_id ON menu(pizzeria_id);\n\nCREATE INDEX idx_person_order_person_id ON person_order(person_id);\nCREATE INDEX idx_person_order_menu_id ON person_order(menu_id);\n\nCREATE INDEX idx_person_visits_person_id ON person_visits(person_id);\nCREATE INDEX idx_person_visits_pizzeria_id ON person_visits(pizzeria_id);",
+      "language": "sql",
+      "note": "Альтернатива DROP + CREATE — CREATE INDEX IF NOT EXISTS. Но он не пересоздаст индекс, если определение поменялось."
+    },
+    {
+      "id": "ex01",
+      "task": "Показать план выполнения JOIN menu × pizzeria (pizza_name, pizzeria_name) и убедиться, что используются индексы.",
+      "hint": "EXPLAIN ANALYZE + SET enable_seqscan = off, иначе на маленьких таблицах будет Seq Scan.",
+      "solution": "SET enable_seqscan = off;\n\nEXPLAIN ANALYZE\nSELECT m.pizza_name, pz.name AS pizzeria_name\nFROM menu m\nJOIN pizzeria pz ON m.pizzeria_id = pz.id;",
+      "language": "sql",
+      "note": "Замер из репозитория: Index Scan using idx_menu_pizzeria_id + pizzeria_pkey, 0.117 мс."
+    },
+    {
+      "id": "ex02",
+      "task": "Создать индекс idx_person_name для регистронезависимого поиска по имени и показать, что запрос WHERE UPPER(name) = 'ANNA' его использует.",
+      "hint": "Функциональный индекс по выражению UPPER(name).",
+      "solution": "DROP INDEX IF EXISTS idx_person_name;\nCREATE INDEX idx_person_name ON person(UPPER(name));\n\nSET enable_seqscan = off;\nEXPLAIN ANALYZE\nSELECT * FROM person WHERE UPPER(name) = 'ANNA';",
+      "language": "sql",
+      "note": "Замер: Index Scan using idx_person_name, 0.048 мс. Запрос WHERE name = 'Anna' этот индекс не использует — выражение должно совпадать."
+    },
+    {
+      "id": "ex03",
+      "task": "Создать составной индекс idx_person_order_multi так, чтобы запрос SELECT person_id, menu_id, order_date … WHERE person_id = 8 AND menu_id = 19 выполнялся через Index Only Scan.",
+      "hint": "В индексе должны быть все колонки, которые читает запрос, — и в WHERE, и в SELECT. Колонки фильтра — первыми.",
+      "solution": "DROP INDEX IF EXISTS idx_person_order_multi;\nCREATE INDEX idx_person_order_multi ON person_order(person_id, menu_id, order_date);\n\nSET enable_seqscan = off;\nEXPLAIN ANALYZE\nSELECT person_id, menu_id, order_date\nFROM person_order\nWHERE person_id = 8 AND menu_id = 19;",
+      "language": "sql",
+      "note": "Замер: Index Only Scan using idx_person_order_multi, 0.072 мс. Если добавить в SELECT колонку id, Index Only Scan станет обычным Index Scan — id в индексе нет."
+    },
+    {
+      "id": "ex04",
+      "task": "Создать уникальный индекс idx_menu_unique на (pizzeria_id, pizza_name) — одна пиццерия не может иметь две пиццы с одинаковым названием. Показать план поиска по обеим колонкам.",
+      "hint": "CREATE UNIQUE INDEX. Если в данных уже есть дубликаты, создание упадёт.",
+      "solution": "DROP INDEX IF EXISTS idx_menu_unique;\n\nCREATE UNIQUE INDEX idx_menu_unique ON menu(pizzeria_id, pizza_name);\n\nSET enable_seqscan = off;\nEXPLAIN ANALYZE\nSELECT *\nFROM menu\nWHERE pizzeria_id = 1\n  AND pizza_name = 'sausage pizza';",
+      "language": "sql",
+      "note": "Замер: Index Scan using idx_menu_unique, 0.074 мс. Разница с UNIQUE-ограничением (ALTER TABLE … ADD CONSTRAINT … UNIQUE): ограничение — часть схемы, на него может ссылаться внешний ключ; под капотом оно тоже создаёт уникальный индекс."
+    },
+    {
+      "id": "ex05",
+      "task": "Создать частичный уникальный индекс idx_person_order_order_date: клиент не может заказать одну и ту же позицию дважды 01.01.2022. Показать план запроса по этой дате.",
+      "hint": "CREATE UNIQUE INDEX … ON person_order(person_id, menu_id) WHERE order_date = '2022-01-01'.",
+      "solution": "DROP INDEX IF EXISTS idx_person_order_order_date;\n\nCREATE UNIQUE INDEX idx_person_order_order_date\nON person_order(person_id, menu_id)\nWHERE order_date = '2022-01-01';\n\nSET enable_seqscan = off;\n\nEXPLAIN ANALYZE\nSELECT person_id, menu_id\nFROM person_order\nWHERE order_date = '2022-01-01'\n  AND person_id = 2;",
+      "language": "sql",
+      "note": "Замер: Index Only Scan using idx_person_order_order_date, 0.105 мс. Без условия order_date = '2022-01-01' в WHERE планировщик этот индекс не возьмёт: он не содержит строк за другие даты."
+    },
+    {
+      "id": "ex06",
+      "task": "Дан запрос с оконной функцией (см. решение). Создать индекс idx_1, который улучшит его план, и сравнить время до и после.",
+      "hint": "Запрос читает из pizzeria колонки id (для JOIN) и rating (для окна). Индекс по обеим колонкам позволит читать pizzeria через Index Only Scan.",
+      "solution": "DROP INDEX IF EXISTS idx_1;\n\nCREATE INDEX idx_1 ON pizzeria(id, rating);\n\nSET enable_seqscan = off;\nEXPLAIN ANALYZE\nSELECT m.pizza_name AS pizza_name,\n       max(rating) OVER (\n         PARTITION BY rating\n         ORDER BY rating\n         ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n       ) AS k\nFROM menu m\nINNER JOIN pizzeria pz ON m.pizzeria_id = pz.id\nORDER BY 1, 2;",
+      "language": "sql",
+      "note": "Замеры: без индекса и без enable_seqscan = off — 0.188 мс (Seq Scan); с индексом и enable_seqscan = off — 0.275 мс (Index Only Scan). План стал «индексным», но не быстрее: на 6–20 строках Seq Scan дешевле."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Создаёт ли PostgreSQL индекс автоматически на колонке FOREIGN KEY (например, menu.pizzeria_id)?",
+      "options": [
+        "Да, на любую колонку с ограничением",
+        "Да, но только если таблица больше 1000 строк",
+        "Нет — автоматически индексируются только PRIMARY KEY и UNIQUE",
+        "Нет, и создать индекс на FK-колонке нельзя"
+      ],
+      "correctIndex": 2,
+      "explanation": "PRIMARY KEY и UNIQUE реализованы через уникальный индекс. Для FK индекс на ссылающейся колонке нужно создавать вручную — поэтому ex00 начинается с них."
+    },
+    {
+      "id": "q2",
+      "question": "Есть индекс ON person(UPPER(name)). Будет ли он использован для WHERE name = 'Anna'?",
+      "options": [
+        "Да, PostgreSQL сам приведёт выражение к UPPER",
+        "Да, но только с enable_seqscan = off",
+        "Да, если имя написано заглавными",
+        "Нет — выражение в WHERE должно совпадать с выражением индекса"
+      ],
+      "correctIndex": 3,
+      "explanation": "Функциональный индекс хранит значения UPPER(name). Условие по голому name с ним не сопоставляется. Нужно писать WHERE UPPER(name) = 'ANNA'."
+    },
+    {
+      "id": "q3",
+      "question": "Индекс (person_id, menu_id, order_date). Какой запрос использует его хуже всего?",
+      "options": [
+        "WHERE person_id = 8",
+        "WHERE menu_id = 19",
+        "WHERE person_id = 8 AND menu_id = 19",
+        "WHERE menu_id = 19 AND person_id = 8"
+      ],
+      "correctIndex": 1,
+      "explanation": "Правило левого префикса: B-Tree отсортирован сначала по person_id. Без условия на первую колонку искать по menu_id приходится по всему индексу. Порядок условий в WHERE (варианты 3 и 4) значения не имеет."
+    },
+    {
+      "id": "q4",
+      "question": "Индекс есть, но на таблице из 20 строк EXPLAIN показывает Seq Scan. Почему?",
+      "options": [
+        "Таблица помещается в одну страницу — прочитать её целиком дешевле, чем идти через индекс",
+        "Индекс повреждён и требует REINDEX",
+        "PostgreSQL не использует индексы, пока не выполнен COMMIT",
+        "Seq Scan — ошибка в плане, нужно удалить индекс"
+      ],
+      "correctIndex": 0,
+      "explanation": "Планировщик сравнивает оценки стоимости. Для крошечной таблицы Seq Scan — одна страница, а Index Scan — проход по дереву плюс чтение таблицы. Замер ex06 это подтверждает: 0.188 мс против 0.275 мс."
+    }
+  ]
+}

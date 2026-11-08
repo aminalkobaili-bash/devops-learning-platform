@@ -1,0 +1,90 @@
+{
+  "id": "01-build",
+  "theoryFile": "01-build.md",
+  "practice": [
+    {
+      "id": "makefile",
+      "task": "Написать Makefile: цель DO собирается из main.c с флагами предупреждений как ошибок и стандартом C11; цели all и clean; повторный make ничего не пересобирает.",
+      "hint": "Цель с зависимостью DO: main.c, CFLAGS ?=, .PHONY. Отступ рецепта — табуляция.",
+      "solution": "CC = gcc\nCFLAGS ?= -Wall -Wextra -Werror -std=c11 -O2\n\n.PHONY: all clean\n\nall: DO\n\nDO: main.c\n\t$(CC) $(CFLAGS) main.c -o DO\n\nclean:\n\trm -f *.o DO",
+      "language": "makefile",
+      "note": "Из app/Makefile."
+    },
+    {
+      "id": "build-twice",
+      "task": "Собрать утилиту дважды и убедиться, что второй раз make ничего не делает.",
+      "hint": "make в каталоге app.",
+      "solution": "cd app\nmake\nmake    # make: Nothing to be done for 'all'.",
+      "language": "bash"
+    },
+    {
+      "id": "exit-codes",
+      "task": "Проверить коды возврата утилиты без аргументов, с аргументом 1 и с аргументом 7.",
+      "hint": "$? сразу после команды.",
+      "solution": "./app/DO; echo \"exit $?\"     # Bad number of arguments! exit 255\n./app/DO 1; echo \"exit $?\"   # Learning to Linux exit 0\n./app/DO 7; echo \"exit $?\"   # Bad number! exit 254",
+      "language": "bash",
+      "note": "Проверено в Ubuntu 24.04 (WSL)."
+    },
+    {
+      "id": "atoi-trap",
+      "task": "Найти аргумент, на котором утилита отвечает «Learning to Linux», хотя аргумент не число.",
+      "hint": "atoi разбирает только начало строки.",
+      "solution": "./app/DO 1abc; echo \"exit $?\"   # Learning to Linux exit 0",
+      "language": "bash",
+      "note": "Найдено при подготовке модуля. В тестах проекта этого случая нет."
+    },
+    {
+      "id": "strtol",
+      "task": "Заменить atoi на строгий разбор: если аргумент не целое число целиком, вывести ошибку.",
+      "hint": "strtol + проверка *end == '\\0' и errno.",
+      "solution": "#include <errno.h>\n#include <stdio.h>\n#include <stdlib.h>\n\nchar *end;\nerrno = 0;\nlong num = strtol(argv[1], &end, 10);\nif (errno != 0 || end == argv[1] || *end != '\\0') {\n  printf(\"Bad number!\\n\");\n  return 2;\n}",
+      "language": "c",
+      "note": "Задачи нет в проекте. Код возврата 2 вместо -2 — переносимое значение."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "main() вернул -1. Какой код возврата увидит shell в Linux ($?)?",
+      "options": ["-1", "1", "255", "0"],
+      "correctIndex": 2,
+      "explanation": "Код процесса — младший байт, 0–255. -1 по модулю 256 = 255. Поэтому тест проекта ждёт 255."
+    },
+    {
+      "id": "q2",
+      "question": "Что выведет ./DO 1abc при разборе аргумента через atoi?",
+      "options": [
+        "Learning to Linux — atoi берёт число из начала строки и игнорирует остальное",
+        "Bad number!",
+        "Ошибку сегментации",
+        "Bad number of arguments!"
+      ],
+      "correctIndex": 0,
+      "explanation": "Проверено на собранной утилите. Строгий разбор — strtol с проверкой конца строки."
+    },
+    {
+      "id": "q3",
+      "question": "Зачем в Makefile строка .PHONY: all clean?",
+      "options": [
+        "Чтобы ускорить сборку",
+        "Чтобы make запускал цели параллельно",
+        "Чтобы скрыть цели из списка",
+        "all и clean — не файлы: без .PHONY файл с таким именем в каталоге заблокировал бы цель"
+      ],
+      "correctIndex": 3,
+      "explanation": "make считает цель выполненной, если файл с её именем существует и свежее зависимостей."
+    },
+    {
+      "id": "q4",
+      "question": "Зачем в CI флаг -Werror?",
+      "options": [
+        "Он ускоряет компиляцию",
+        "Любое предупреждение компилятора становится ошибкой — код с предупреждениями не пройдёт стадию build",
+        "Он отключает предупреждения",
+        "Он нужен для отладки"
+      ],
+      "correctIndex": 1,
+      "explanation": "Предупреждения часто указывают на реальные баги. В CI их нельзя пропустить, как в локальной сборке."
+    }
+  ]
+}

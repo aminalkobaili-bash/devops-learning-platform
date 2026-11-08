@@ -1,0 +1,81 @@
+{
+  "id": "04-packages-ntp",
+  "theoryFile": "04-packages-ntp.md",
+  "practice": [
+    {
+      "id": "apt-upgrade",
+      "task": "Обновить все пакеты системы одной строкой, без подтверждений, и проверить, что обновлять больше нечего.",
+      "hint": "update && upgrade -y, затем ещё раз update.",
+      "solution": "sudo apt update && sudo apt upgrade -y\nsudo apt update",
+      "language": "bash",
+      "note": "В проекте повторный apt update вывел: All packages are up to date."
+    },
+    {
+      "id": "upgradable",
+      "task": "Посмотреть, какие пакеты можно обновить, не обновляя их.",
+      "hint": "Сначала обновить списки, затем вывести upgradable.",
+      "solution": "sudo apt update\napt list --upgradable",
+      "language": "bash"
+    },
+    {
+      "id": "timezone",
+      "task": "Проверить текущий часовой пояс и установить Europe/Moscow.",
+      "hint": "timedatectl без аргументов показывает статус.",
+      "solution": "timedatectl\nsudo timedatectl set-timezone Europe/Moscow\ntimedatectl",
+      "language": "bash"
+    },
+    {
+      "id": "ntp",
+      "task": "Включить синхронизацию времени по NTP и подтвердить, что часы синхронизированы.",
+      "hint": "set-ntp true, затем ищи NTPSynchronized в машинно-читаемом выводе.",
+      "solution": "sudo timedatectl set-ntp true\ntimedatectl show | grep NTPSynchronized",
+      "language": "bash",
+      "note": "В проекте: NTP service: active, NTPSynchronized=yes. Сразу после включения может быть no — синхронизация занимает несколько секунд."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Что делает sudo apt update?",
+      "options": [
+        "Обновляет все установленные пакеты",
+        "Обновляет только ядро",
+        "Обновляет сам apt",
+        "Скачивает актуальные списки пакетов из репозиториев, ничего не устанавливая"
+      ],
+      "correctIndex": 3,
+      "explanation": "update обновляет «каталог», upgrade — сами пакеты по этому каталогу."
+    },
+    {
+      "id": "q2",
+      "question": "Почему в Dockerfile пишут apt-get, а не apt?",
+      "options": [
+        "apt-get быстрее",
+        "У apt-get стабильный интерфейс для скриптов; apt рассчитан на человека и сам предупреждает, что его CLI нестабилен",
+        "apt не работает без терминала",
+        "apt не умеет устанавливать пакеты"
+      ],
+      "correctIndex": 1,
+      "explanation": "Вывод и поведение apt могут меняться между версиями ради удобства человека. Для автоматизации нужен предсказуемый apt-get."
+    },
+    {
+      "id": "q3",
+      "question": "Поменяли часовой пояс с UTC на Europe/Moscow. Что произошло с системными часами?",
+      "options": [
+        "Ничего — часы идут в UTC, пояс влияет только на отображение",
+        "Часы сдвинулись на 3 часа вперёд",
+        "Сбросилась синхронизация NTP",
+        "Изменилось время в аппаратных часах RTC"
+      ],
+      "correctIndex": 0,
+      "explanation": "Ядро хранит время в UTC. Часовой пояс — правило перевода UTC в местное время при выводе."
+    },
+    {
+      "id": "q4",
+      "question": "Какой порт и протокол использует NTP?",
+      "options": ["TCP 22", "TCP 443", "UDP 123", "UDP 53"],
+      "correctIndex": 2,
+      "explanation": "NTP работает по UDP 123. Если исходящий UDP 123 закрыт фаерволом, синхронизация не заработает. UDP 53 — DNS, TCP 22 — SSH."
+    }
+  ]
+}

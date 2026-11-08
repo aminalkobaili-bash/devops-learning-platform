@@ -1,0 +1,98 @@
+{
+  "id": "03-fs-load",
+  "theoryFile": "03-fs-load.md",
+  "practice": [
+    {
+      "id": "disk-check",
+      "task": "Написать функцию, которая останавливает скрипт, если на / осталось меньше 1 GB.",
+      "hint": "df / --output=avail даёт КиБ, tail -1 убирает заголовок. 1 GiB = 1048576 КиБ.",
+      "solution": "check_disk_space() {\n    local free=$(df / --output=avail | tail -1)\n    if (( free < 1048576 )); then\n        echo \"Less than 1GB free space. Script stopped.\"\n        exit 1\n    fi\n}",
+      "language": "bash",
+      "note": "Из generator.sh в fs-generator и disk-filler."
+    },
+    {
+      "id": "split-pattern",
+      "task": "Из параметров az.az и 3kb получить имя (az), расширение (az) и число (3).",
+      "hint": "Удаление шаблонов: % с конца, # с начала.",
+      "solution": "file_pattern=\"az.az\"\nfile_size=\"3kb\"\n\nname=${file_pattern%.*}\next=${file_pattern#*.}\nsize=${file_size%kb}\n\necho \"$name $ext $size\"",
+      "language": "bash"
+    },
+    {
+      "id": "validate",
+      "task": "Проверить, что шаблон файла — от 1 до 7 латинских букв, точка, от 1 до 3 букв, а размер — число с суффиксом kb не больше 100.",
+      "hint": "Регулярка в [[ =~ ]] и арифметическое сравнение.",
+      "solution": "if [[ ! $file_pattern =~ ^[a-zA-Z]{1,7}\\.[a-zA-Z]{1,3}$ ]]; then\n    echo \"Error: File pattern must be name.ext\"\n    exit 1\nfi\n\nif [[ ! $file_size =~ ^[0-9]+kb$ ]]; then\n    echo \"Error: File size must be like 10kb\"\n    exit 1\nfi\n\nsize=${file_size%kb}\nif (( size > 100 )); then\n    echo \"Error: File size must be <= 100kb\"\n    exit 1\nfi",
+      "language": "bash",
+      "note": "Из fs-generator/validator.sh."
+    },
+    {
+      "id": "sizes",
+      "task": "Создать файл 3 KB через truncate и файл 5 MB через dd, сравнить их размер в ls и в du. Почему отличаются?",
+      "hint": "ls -lh показывает логический размер, du -h — занятые блоки.",
+      "solution": "truncate -s 3K sparse.az\ndd if=/dev/zero of=real.az bs=1M count=5 status=none\nls -lh sparse.az real.az\ndu -h sparse.az real.az",
+      "language": "bash",
+      "note": "truncate создаёт разреженный файл — блоки на диске почти не выделены. dd реально пишет данные, поэтому именно disk-filler двигает график свободного места."
+    },
+    {
+      "id": "dry-run",
+      "task": "Перед удалением по маске даты 081126 показать, какие файлы и каталоги будут удалены, ничего не удаляя.",
+      "hint": "Тот же find, что в fs-cleaner, но без -exec rm.",
+      "solution": "find /tmp /var/tmp \"$HOME\" -name \"*_081126*\" -print 2>/dev/null",
+      "language": "bash",
+      "note": "Этого шага нет в проекте. Именно его не хватает fs-cleaner — недочёт 3 из README."
+    },
+    {
+      "id": "clean-by-log",
+      "task": "Удалить всё, что записано в лог /tmp/clogging_log.txt (путь — первое поле строки), начиная с конца.",
+      "hint": "tac, while read, awk для первого поля, проверка -e.",
+      "solution": "tac /tmp/clogging_log.txt | while read line\ndo\n    path=$(echo \"$line\" | awk '{print $1}')\n    if [[ -e \"$path\" ]]; then\n        rm -rf \"$path\"\n    fi\ndone",
+      "language": "bash",
+      "note": "Из fs-cleaner (режим 1) — единственный режим, который удаляет только созданное генератором."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "truncate -s 100M file. Что покажут ls -lh и du -h?",
+      "options": [
+        "Оба — 100M",
+        "Оба — 0",
+        "ls — 100M, du — около 0: файл разреженный, блоки на диске не выделены",
+        "ls — 0, du — 100M"
+      ],
+      "correctIndex": 2,
+      "explanation": "Поэтому для нагрузки на диск в disk-filler используется dd if=/dev/zero — он реально пишет данные."
+    },
+    {
+      "id": "q2",
+      "question": "f=archive.tar.gz. Что вернёт ${f%.*}?",
+      "options": ["archive", "archive.tar", "gz", "tar.gz"],
+      "correctIndex": 1,
+      "explanation": "% удаляет кратчайшее совпадение с конца — только .gz. Длиннейшее (%%.*) дало бы archive."
+    },
+    {
+      "id": "q3",
+      "question": "Почему режимы 2 и 3 fs-cleaner опасны?",
+      "options": [
+        "Удаляют по маске имени во всём $HOME и /tmp — совпавшие чужие файлы тоже будут удалены, без подтверждения",
+        "Работают слишком медленно",
+        "Требуют root",
+        "Не удаляют каталоги"
+      ],
+      "correctIndex": 0,
+      "explanation": "Недочёт 3 из README. Безопасный порядок: показать список (-print), ограничить пути, запросить подтверждение."
+    },
+    {
+      "id": "q4",
+      "question": "df / --output=avail | tail -1 вернул 900000. Сработает ли проверка «меньше 1 GB»?",
+      "options": [
+        "Нет: значение в байтах, это 0.9 MB",
+        "Нет: значение в МБ, это 900 GB",
+        "Нет: проверка сравнивает с 1000000",
+        "Да: значение в КиБ, 900000 < 1048576 (1 GiB)"
+      ],
+      "correctIndex": 3,
+      "explanation": "df по умолчанию считает в блоках по 1 КиБ. 900000 КиБ ≈ 0.86 GiB."
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "id": "07-manual-jobs",
+  "theoryFile": "07-manual-jobs.md",
+  "practice": [
+    {
+      "id": "manual",
+      "task": "Сделать deploy-job, который запускается только кнопкой в интерфейсе пайплайна.",
+      "hint": "when: manual.",
+      "solution": "deploy_job:\n  stage: deploy\n  tags:\n    - deploy\n  script:\n    - bash scripts/deploy.sh\n  when: manual",
+      "language": "yaml"
+    },
+    {
+      "id": "after-script",
+      "task": "Отправлять результат деплоя в Telegram из самого deploy-job — и при успехе, и при провале.",
+      "hint": "after_script и переменная $CI_JOB_STATUS.",
+      "solution": "deploy_job:\n  script:\n    - bash scripts/deploy.sh\n  after_script:\n    - |\n      if [ \"$CI_JOB_STATUS\" = \"success\" ]; then\n        bash scripts/notify.sh \"🚀 <b>CD passed</b> for ${CI_COMMIT_SHORT_SHA}.\"\n      else\n        bash scripts/notify.sh \"🔥 <b>CD failed</b> for ${CI_COMMIT_SHORT_SHA}. Check: ${CI_PIPELINE_URL}\"\n      fi\n  when: manual",
+      "language": "yaml",
+      "note": "Исправление из проекта: отдельный job с when: on_failure после manual-job никогда не запускался."
+    },
+    {
+      "id": "canceled",
+      "task": "Различать в уведомлении три исхода деплоя: успех, отмену и провал.",
+      "hint": "case по $CI_JOB_STATUS: success, canceled, остальное.",
+      "solution": "after_script:\n  - |\n    case \"$CI_JOB_STATUS\" in\n      success)  bash scripts/notify.sh \"🚀 CD passed for ${CI_COMMIT_SHORT_SHA}\" ;;\n      canceled) bash scripts/notify.sh \"⏹ CD canceled for ${CI_COMMIT_SHORT_SHA}\" ;;\n      *)        bash scripts/notify.sh \"🔥 CD failed for ${CI_COMMIT_SHORT_SHA}: ${CI_PIPELINE_URL}\" ;;\n    esac",
+      "language": "yaml",
+      "note": "Найдено при подготовке модуля (документация GitLab): при отмене after_script выполняется с CI_JOB_STATUS=canceled."
+    },
+    {
+      "id": "after-errors",
+      "task": "Сделать так, чтобы сбой отправки уведомления в after_script ронял deploy-job.",
+      "hint": "Переменная job AFTER_SCRIPT_IGNORE_ERRORS.",
+      "solution": "deploy_job:\n  variables:\n    AFTER_SCRIPT_IGNORE_ERRORS: \"false\"",
+      "language": "yaml",
+      "note": "Найдено при подготовке модуля: по умолчанию ошибки after_script игнорируются, и exit 1 из notify.sh не делает job красным."
+    },
+    {
+      "id": "rules",
+      "task": "Разрешить ручной деплой только из основной ветки.",
+      "hint": "rules с if по $CI_COMMIT_BRANCH и $CI_DEFAULT_BRANCH.",
+      "solution": "deploy_job:\n  stage: deploy\n  tags:\n    - deploy\n  script:\n    - bash scripts/deploy.sh\n  rules:\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n      when: manual\n  allow_failure: false",
+      "language": "yaml",
+      "note": "when: manual внутри rules даёт allow_failure: false по умолчанию; явно — для читаемости. Само по себе rules не защищает — нужны protected runner и variables."
+    },
+    {
+      "id": "environment",
+      "task": "Привязать деплой к окружению production, чтобы видеть историю деплоев и иметь кнопку отката.",
+      "hint": "Ключ environment с name и url.",
+      "solution": "deploy_job:\n  environment:\n    name: production\n    url: http://vm2.example",
+      "language": "yaml",
+      "note": "Задачи нет в проекте. Operate → Environments → production: какой коммит развёрнут и Rollback."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Job с when: manual упал. Что будет с job notify_cd_failure (when: on_failure, needs: deploy_job)?",
+      "options": [
+        "Не запустится — у manual job по умолчанию allow_failure: true, и его провал считается успехом",
+        "Запустится и отправит уведомление",
+        "Пайплайн остановится с ошибкой",
+        "Запустится, только если нажать кнопку"
+      ],
+      "correctIndex": 0,
+      "explanation": "Ошибка из исходной версии проекта. Решение — after_script в самом deploy_job."
+    },
+    {
+      "id": "q2",
+      "question": "notify.sh в after_script завершился с exit 1. Какой статус будет у job, если script прошёл успешно?",
+      "options": [
+        "failed",
+        "canceled",
+        "success — ошибки after_script по умолчанию игнорируются",
+        "warning"
+      ],
+      "correctIndex": 2,
+      "explanation": "Поведение по умолчанию GitLab Runner. Чтобы ронять job — AFTER_SCRIPT_IGNORE_ERRORS: \"false\"."
+    },
+    {
+      "id": "q3",
+      "question": "SSH-ключ к prod лежит на shell runner, jobs не ограничены по веткам. Что может сделать человек с правом пуша в любую ветку?",
+      "options": [
+        "Ничего — деплой ручной",
+        "Только прочитать логи",
+        "Ничего, если переменные masked",
+        "Изменить script любого job в своей ветке и выполнить команды на prod через этот ключ"
+      ],
+      "correctIndex": 3,
+      "explanation": "Найдено при подготовке модуля. Закрывается protected runner, ключом в protected-переменной и protected branches."
+    },
+    {
+      "id": "q4",
+      "question": "Почему rules в .gitlab-ci.yml недостаточно для защиты деплоя?",
+      "options": [
+        "rules не поддерживают ветки",
+        "Злоумышленник может изменить .gitlab-ci.yml в своей ветке — защищают настройки проекта (protected runner/variables/branches), а не код пайплайна",
+        "rules работают только для тегов",
+        "rules проверяются после выполнения job"
+      ],
+      "correctIndex": 1,
+      "explanation": "Пайплайн берёт конфигурацию из пушнутой ветки. Граница безопасности — то, что нельзя изменить коммитом."
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "id": "03-iptables-basics",
+  "theoryFile": "03-iptables-basics.md",
+  "practice": [
+    {
+      "id": "fw-ws1",
+      "task": "Написать /etc/firewall.sh для ws1: очистить правила, открыть входящие TCP 22 и 80, и запретить ответы на ping так, чтобы в скрипте было и запрещающее, и разрешающее правило для echo-reply.",
+      "hint": "Чтобы запрет сработал, DROP должен стоять раньше ACCEPT.",
+      "solution": "#!/bin/sh\niptables -F\niptables -X\n\niptables -A INPUT -p tcp --dport 22 -j ACCEPT\niptables -A INPUT -p tcp --dport 80 -j ACCEPT\n\niptables -A OUTPUT -p icmp --icmp-type echo-reply -j DROP\niptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT",
+      "language": "bash",
+      "note": "Скрипт из репозитория: configs/two-host-lab/ws1/firewall.sh. Результат в проекте: ping ws1 — 100% loss."
+    },
+    {
+      "id": "fw-ws2",
+      "task": "Те же правила для ws2, но так, чтобы ws2 отвечал на ping. Поменять только порядок.",
+      "hint": "Первое совпавшее правило побеждает.",
+      "solution": "#!/bin/sh\niptables -F\niptables -X\n\niptables -A INPUT -p tcp --dport 22 -j ACCEPT\niptables -A INPUT -p tcp --dport 80 -j ACCEPT\n\niptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT\niptables -A OUTPUT -p icmp --icmp-type echo-reply -j DROP",
+      "language": "bash",
+      "note": "Результат в проекте: ping ws2 — 0% loss."
+    },
+    {
+      "id": "apply",
+      "task": "Применить скрипт и посмотреть правила с номерами и счётчиками: какое из двух ICMP-правил срабатывает?",
+      "hint": "chmod +x, запуск, iptables -L с флагами -n -v --line-numbers.",
+      "solution": "sudo chmod +x /etc/firewall.sh\nsudo /etc/firewall.sh\nsudo iptables -L OUTPUT -n -v --line-numbers",
+      "language": "bash",
+      "note": "Растут счётчики только у первого echo-reply правила — второе никогда не получает пакетов."
+    },
+    {
+      "id": "nmap",
+      "task": "С ws2 проверить, виден ли ws1, который не отвечает на ping, и какие порты у него открыты.",
+      "hint": "nmap по IP.",
+      "solution": "nmap 192.168.100.10",
+      "language": "bash",
+      "note": "В проекте: Host is up, хотя ping блокируется. Под sudo nmap в той же сети находит хост через ARP; без sudo — TCP-подключением к портам 80/443, а 80 на ws1 открыт."
+    },
+    {
+      "id": "delete-rule",
+      "task": "Удалить из OUTPUT на ws1 правило, которое блокирует ответы на ping, не трогая остальные.",
+      "hint": "Узнать номер правила и удалить по номеру.",
+      "solution": "sudo iptables -L OUTPUT -n --line-numbers\nsudo iptables -D OUTPUT 1\nping -c 2 192.168.100.10   # с ws2",
+      "language": "bash",
+      "note": "Задачи нет в проекте. Номер 1 — если DROP стоит первым в OUTPUT, как в скрипте ws1."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "В цепочке два правила: 1) echo-reply DROP, 2) echo-reply ACCEPT. Что будет с ответом на ping?",
+      "options": [
+        "Пропустится — ACCEPT важнее DROP",
+        "Отбросится — срабатывает первое совпавшее правило",
+        "Пропустится — срабатывает последнее правило",
+        "iptables выдаст ошибку о конфликте"
+      ],
+      "correctIndex": 1,
+      "explanation": "Правила проверяются сверху вниз до первого совпадения. Эксперимент проекта: ws1 (DROP первым) — 100% loss, ws2 (ACCEPT первым) — 0% loss."
+    },
+    {
+      "id": "q2",
+      "question": "Чем DROP отличается от REJECT?",
+      "options": [
+        "DROP молча отбрасывает, REJECT отбрасывает и отправляет ошибку отправителю",
+        "DROP удаляет правило, REJECT — пакет",
+        "Ничем",
+        "REJECT работает только для UDP"
+      ],
+      "correctIndex": 0,
+      "explanation": "С DROP клиент ждёт до таймаута. С REJECT сразу получает ICMP port unreachable или TCP RST — Connection refused."
+    },
+    {
+      "id": "q3",
+      "question": "Хост не отвечает на ping. Можно ли считать, что он выключен?",
+      "options": [
+        "Да, ping — единственная проверка",
+        "Да, если ping идёт дольше 10 секунд",
+        "Нет, только если хост в другой подсети",
+        "Нет: ICMP может блокироваться фаерволом. nmap обнаруживает хост по TCP-портам и ARP"
+      ],
+      "correctIndex": 3,
+      "explanation": "В проекте ws1 блокировал ответы на ping, а nmap показал Host is up."
+    },
+    {
+      "id": "q4",
+      "question": "Настроили iptables и перезагрузили сервер. Что с правилами?",
+      "options": [
+        "Сохранились в /etc/iptables.conf",
+        "Сохранились, если запускать с sudo",
+        "Пропали — их нужно сохранять отдельно (iptables-persistent) или применять скриптом при загрузке",
+        "Превратились в правила ufw"
+      ],
+      "correctIndex": 2,
+      "explanation": "Правила хранятся только в памяти ядра. В проекте они задавались скриптом /etc/firewall.sh, который запускается вручную."
+    }
+  ]
+}

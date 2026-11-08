@@ -1,0 +1,101 @@
+{
+  "id": "07-compose",
+  "theoryFile": "07-compose.md",
+  "practice": [
+    {
+      "id": "server-service",
+      "task": "Описать сервис server: собирать образ из docker/Dockerfile с корнем репозитория в качестве контекста, тегировать как docker-nginx-fastcgi:1.0, перезапускать, пока не остановлен вручную.",
+      "hint": "build: context + dockerfile, image:, restart.",
+      "solution": "services:\n  server:\n    build:\n      context: .\n      dockerfile: docker/Dockerfile\n    image: docker-nginx-fastcgi:1.0\n    container_name: fastcgi-server\n    restart: unless-stopped\n    networks:\n      - app-network",
+      "language": "yaml",
+      "note": "До ревью было только image: — docker compose build ничего не собирал."
+    },
+    {
+      "id": "proxy-service",
+      "task": "Описать сервис proxy: официальный nginx 1.30 alpine, порт 80 хоста → 8080 контейнера, конфиг proxy.conf только для чтения, старт только после того, как server стал healthy.",
+      "hint": "ports, volumes с :ro, depends_on с condition: service_healthy.",
+      "solution": "  proxy:\n    image: nginx:1.30-alpine\n    container_name: nginx-proxy\n    restart: unless-stopped\n    ports:\n      - \"80:8080\"\n    volumes:\n      - ./nginx/proxy.conf:/etc/nginx/conf.d/default.conf:ro\n    networks:\n      - app-network\n    depends_on:\n      server:\n        condition: service_healthy\n\nnetworks:\n  app-network:\n    driver: bridge",
+      "language": "yaml"
+    },
+    {
+      "id": "up",
+      "task": "Собрать и запустить стенд одной командой, проверить статус и ответы.",
+      "hint": "up --build -d, ps, curl / и /status.",
+      "solution": "docker compose up --build -d\ndocker compose ps\ncurl -s localhost/\ncurl -s localhost/status",
+      "language": "bash",
+      "note": "В проекте: fastcgi-server Up (healthy), Hello, World! и вывод stub_status."
+    },
+    {
+      "id": "dns",
+      "task": "Убедиться, что прокси находит сервер по имени сервиса через DNS Docker.",
+      "hint": "Из контейнера proxy разрешить имя server.",
+      "solution": "docker compose exec proxy getent hosts server\ndocker compose exec proxy wget -qO- http://server:81/",
+      "language": "bash",
+      "note": "В alpine есть getent и wget (busybox). Имя server разрешается в IP контейнера внутри app-network."
+    },
+    {
+      "id": "not-published",
+      "task": "Проверить, что сервер напрямую с хоста недоступен, а только через прокси.",
+      "hint": "Порт 81 не опубликован в ports:.",
+      "solution": "curl -s --max-time 3 localhost:81/ || echo \"not reachable from host\"\ndocker compose port server 81     # пусто — порт не опубликован",
+      "language": "bash"
+    },
+    {
+      "id": "config-down",
+      "task": "Проверить итоговую конфигурацию Compose и остановить стенд, удалив контейнеры и сеть.",
+      "hint": "docker compose config и down.",
+      "solution": "docker compose config\ndocker compose down",
+      "language": "bash"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Чем depends_on: [server] отличается от depends_on с condition: service_healthy?",
+      "options": [
+        "Ничем",
+        "Первый ждёт только запуска контейнера, второй — прохождения HEALTHCHECK",
+        "Первый ждёт healthcheck, второй — завершения",
+        "condition: service_healthy перезапускает server при ошибке"
+      ],
+      "correctIndex": 1,
+      "explanation": "В проекте это исправление после ревью: в логе видно fastcgi-server Healthy → nginx-proxy Starting."
+    },
+    {
+      "id": "q2",
+      "question": "Как nginx в контейнере proxy находит адрес сервиса server?",
+      "options": [
+        "По IP, прописанному в конфиге",
+        "Через /etc/hosts хоста",
+        "Через встроенный DNS Docker в пользовательской сети — имя сервиса резолвится в IP контейнера",
+        "Через переменную окружения SERVER_HOST"
+      ],
+      "correctIndex": 2,
+      "explanation": "DNS по именам работает в пользовательских сетях, которые Compose создаёт всегда. В сети по умолчанию docker run — нет."
+    },
+    {
+      "id": "q3",
+      "question": "У server только EXPOSE 81, без ports. Откуда к нему можно подключиться?",
+      "options": [
+        "Только из контейнеров в той же сети app-network",
+        "С хоста на localhost:81",
+        "Из интернета",
+        "Ниоткуда"
+      ],
+      "correctIndex": 0,
+      "explanation": "Публикацию на хосте делает только ports:. Так сервер скрыт за прокси."
+    },
+    {
+      "id": "q4",
+      "question": "У сервиса указаны и build:, и image:. Что сделает docker compose up --build?",
+      "options": [
+        "Скачает image и проигнорирует build",
+        "Выдаст ошибку конфликта",
+        "Соберёт образ и не будет его тегировать",
+        "Соберёт образ из build и назовёт его тегом из image"
+      ],
+      "correctIndex": 3,
+      "explanation": "Так проект собирается и запускается одной командой. До ревью был только image, и образ приходилось собирать отдельно."
+    }
+  ]
+}

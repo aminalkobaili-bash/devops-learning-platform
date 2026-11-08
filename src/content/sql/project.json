@@ -1,0 +1,19 @@
+{
+  "id": "sql",
+  "title": "SQL / PostgreSQL",
+  "description": "10 модулей на одной учебной БД (сеть пиццерий: клиенты, посещения, меню, заказы). От выборок и JOIN до индексов, ограничений целостности и уровней изоляции транзакций.",
+  "stack": ["PostgreSQL 16", "psql", "DDL", "DML", "CTE", "window functions", "EXPLAIN ANALYZE"],
+  "repo": "https://github.com/aminalkobaili-bash/sql-postgresql-practice",
+  "modules": [
+    { "id": "01-select", "order": 1, "title": "SELECT, фильтрация, подзапросы", "level": "beginner", "topics": ["WHERE", "BETWEEN", "CASE", "subquery"] },
+    { "id": "02-joins", "order": 2, "title": "Операции над множествами и JOIN", "level": "beginner", "topics": ["UNION", "INTERSECT", "EXCEPT", "CROSS JOIN", "EXISTS"] },
+    { "id": "03-outer-joins-cte", "order": 3, "title": "Внешние соединения и CTE", "level": "beginner", "topics": ["LEFT JOIN", "FULL JOIN", "generate_series", "WITH"] },
+    { "id": "04-dml", "order": 4, "title": "INSERT, UPDATE, DELETE", "level": "intermediate", "topics": ["INSERT … SELECT", "UPDATE", "DELETE"] },
+    { "id": "05-views", "order": 5, "title": "Представления и материализованные представления", "level": "intermediate", "topics": ["VIEW", "MATERIALIZED VIEW", "REFRESH"] },
+    { "id": "06-recursive-cte", "order": 6, "title": "Рекурсивные CTE: задача коммивояжёра", "level": "intermediate", "topics": ["WITH RECURSIVE", "arrays"] },
+    { "id": "07-indexes", "order": 7, "title": "Индексы и оптимизация запросов", "level": "advanced", "topics": ["B-Tree", "partial", "multi-column", "EXPLAIN ANALYZE"] },
+    { "id": "08-constraints", "order": 8, "title": "Ограничения и последовательности", "level": "advanced", "topics": ["FK", "CHECK", "SEQUENCE", "ROW_NUMBER()"] },
+    { "id": "09-aggregation", "order": 9, "title": "Агрегация и аналитика", "level": "intermediate", "topics": ["GROUP BY", "HAVING", "COUNT", "AVG"] },
+    { "id": "10-transactions", "order": 10, "title": "Транзакции и уровни изоляции", "level": "advanced", "topics": ["READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE", "deadlock"] }
+  ]
+}

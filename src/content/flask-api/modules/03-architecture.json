@@ -1,0 +1,99 @@
+{
+  "id": "03-architecture",
+  "theoryFile": "03-architecture.md",
+  "practice": [
+    {
+      "id": "repo-interface",
+      "task": "Описать интерфейс репозитория игр с методами get, save, list_waiting через abc.",
+      "hint": "class GameRepository(ABC) и @abstractmethod.",
+      "solution": "from abc import ABC, abstractmethod\nfrom uuid import UUID\n\nclass GameRepository(ABC):\n    @abstractmethod\n    def get(self, uuid: UUID) -> Game: ...\n\n    @abstractmethod\n    def save(self, game: Game) -> None: ...\n\n    @abstractmethod\n    def list_waiting(self, exclude_player_uuid: UUID | None = None) -> list[Game]: ...",
+      "language": "python",
+      "note": "Аналог datasource/repository/interface.py. По чистой архитектуре этот файл должен лежать в domain."
+    },
+    {
+      "id": "in-memory",
+      "task": "Написать InMemoryGameRepository для тестов сервиса без PostgreSQL.",
+      "hint": "Словарь uuid → Game. При отсутствии игры — GameNotFoundError.",
+      "solution": "class InMemoryGameRepository(GameRepository):\n    def __init__(self):\n        self._games: dict[UUID, Game] = {}\n\n    def get(self, uuid: UUID) -> Game:\n        if uuid not in self._games:\n            raise GameNotFoundError(f\"Game {uuid} not found\")\n        return self._games[uuid]\n\n    def save(self, game: Game) -> None:\n        self._games[game.uuid] = game\n\n    def list_waiting(self, exclude_player_uuid=None) -> list[Game]:\n        return [g for g in self._games.values()\n                if g.status == GameStatus.WAITING and g.player1_uuid != exclude_player_uuid]\n\n# service = GameServiceImpl(InMemoryGameRepository())",
+      "language": "python",
+      "note": "Такое хранилище было в v1 проекта. Сейчас автотестов в репозитории нет (README) — это первый шаг к ним."
+    },
+    {
+      "id": "container",
+      "task": "Добавить в DI-контейнер ленивое создание сервиса игр, который получает репозиторий из контейнера.",
+      "hint": "Поле _game_service = None; создать при первом вызове.",
+      "solution": "def get_service(self) -> GameService:\n    if self._game_service is None:\n        self._game_service = GameServiceImpl(self.get_repository())\n    return self._game_service",
+      "language": "python",
+      "note": "Из di/container.py."
+    },
+    {
+      "id": "mapper",
+      "task": "Написать маппер ORM-игры в доменную модель.",
+      "hint": "Создать domain Game, поле матрицы обернуть в GameField.",
+      "solution": "def game_to_domain(orm_game: ORMGame) -> Game:\n    return Game(\n        uuid=orm_game.uuid,\n        field=GameField(matrix=orm_game.field_matrix),\n        created_at=orm_game.created_at,\n        player1_uuid=orm_game.player1_uuid,\n        player2_uuid=orm_game.player2_uuid,\n        status=orm_game.status,\n        current_turn_uuid=orm_game.current_turn_uuid,\n        winner_uuid=orm_game.winner_uuid,\n        player1_symbol=orm_game.player1_symbol,\n        player2_symbol=orm_game.player2_symbol,\n        game_type=orm_game.game_type,\n    )",
+      "language": "python",
+      "note": "Из datasource/mapper/game_mapper.py. GameField проверяет 3×3 и значения 0/1/2 в __post_init__ — битые данные из БД не пройдут в домен."
+    },
+    {
+      "id": "not-found-404",
+      "task": "Исправить обработчик хода: несуществующая игра должна давать 404, а не 400.",
+      "hint": "Отдельный except GameNotFoundError перед общим DomainError.",
+      "solution": "try:\n    updated_game = service.make_move(game_uuid, user_uuid, new_field)\nexcept GameNotFoundError:\n    return ErrorResponse(\"Game not found\").to_json(), 404\nexcept (InvalidMoveError, GameOverError, WrongPlayerTurnError) as e:\n    return ErrorResponse(\"Move failed\", details=str(e)).to_json(), 400\nexcept DomainError as e:\n    return ErrorResponse(\"Error\", details=str(e)).to_json(), 400",
+      "language": "python",
+      "note": "Найдено при подготовке модуля: в update_game_handler и join_game_handler этого except нет."
+    },
+    {
+      "id": "errorhandler",
+      "task": "Заменить повторяющиеся try/except в обработчиках одним глобальным обработчиком ошибок домена.",
+      "hint": "@app.errorhandler(DomainError) и словарь «класс → код».",
+      "solution": "STATUS = {\n    GameNotFoundError: 404,\n    JwtError: 401,\n}\n\n@app.errorhandler(DomainError)\ndef handle_domain_error(e):\n    code = STATUS.get(type(e), 400)\n    return {\"error\": type(e).__name__, \"details\": str(e)}, code",
+      "language": "python",
+      "note": "Задачи нет в проекте — направление рефакторинга."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Какой слой в этой архитектуре должен ничего не знать ни про Flask, ни про SQLAlchemy?",
+      "options": ["web", "datasource", "domain", "di"],
+      "correctIndex": 2,
+      "explanation": "Domain — правила игры и пользователей. Благодаря этому их можно тестировать без HTTP и БД."
+    },
+    {
+      "id": "q2",
+      "question": "class GameNotFoundError(DomainError). Обработчик: except DomainError → 400, затем except GameNotFoundError → 404. Что получит клиент для несуществующей игры?",
+      "options": [
+        "400 — первым совпадёт except DomainError, второй блок недостижим",
+        "404",
+        "500",
+        "Оба ответа"
+      ],
+      "correctIndex": 0,
+      "explanation": "Python проверяет except сверху вниз, и наследник подходит под родительский класс. Специфичные исключения ставят первыми."
+    },
+    {
+      "id": "q3",
+      "question": "Зачем отдельная модель ответа (DTO), если есть доменный User?",
+      "options": [
+        "Так быстрее сериализация",
+        "Flask не умеет сериализовать dataclass",
+        "Это требование SQLAlchemy",
+        "Чтобы управлять тем, что уходит клиенту: например, хеш пароля не попадает в JSON"
+      ],
+      "correctIndex": 3,
+      "explanation": "Формат API отделён от внутренней модели: поля можно переименовывать и скрывать, не трогая domain."
+    },
+    {
+      "id": "q4",
+      "question": "Сервис domain импортирует GameRepository из datasource. Какой принцип это нарушает?",
+      "options": [
+        "Single Responsibility",
+        "Dependency Inversion — интерфейс должен принадлежать слою, который его использует (domain)",
+        "Open/Closed",
+        "DRY"
+      ],
+      "correctIndex": 1,
+      "explanation": "Отмечено в README по графу зависимостей: 7 связей domain → datasource. Перенос интерфейсов в domain разворачивает зависимость."
+    }
+  ]
+}

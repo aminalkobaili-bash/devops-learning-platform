@@ -1,0 +1,77 @@
+.prose {
+  font-size: 1rem;
+}
+
+.prose h2,
+.prose h3 {
+  margin: 28px 0 10px;
+}
+
+.prose h2 {
+  font-size: 1.2rem;
+}
+
+.prose h3 {
+  font-size: 1.05rem;
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose p,
+.prose ul,
+.prose ol {
+  margin: 0 0 14px;
+}
+
+.prose li + li {
+  margin-top: 4px;
+}
+
+/* inline-код; блочный код рендерит CodeBlock */
+.prose :not(pre) > code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  font-size: 0.85em;
+}
+
+.prose blockquote {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: var(--accent-soft);
+}
+
+.prose blockquote p {
+  margin: 0;
+}
+
+/* Таблица скроллится внутри себя, а не растягивает страницу на телефоне */
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 16px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.prose th,
+.prose td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  background: var(--code-bg);
+}
+
+.empty {
+  color: var(--muted);
+}

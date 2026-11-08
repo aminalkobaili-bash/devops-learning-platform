@@ -1,0 +1,91 @@
+{
+  "id": "08-logs",
+  "theoryFile": "08-logs.md",
+  "practice": [
+    {
+      "id": "dmesg",
+      "task": "Просмотреть сообщения ядра, записанные при загрузке, и найти в них упоминания диска sda.",
+      "hint": "Файл /var/log/dmesg, листать через less, поиск внутри — /.",
+      "solution": "less /var/log/dmesg\n# внутри less: /sda → Enter, n — следующее совпадение, q — выход",
+      "language": "bash"
+    },
+    {
+      "id": "syslog-session",
+      "task": "Найти в syslog запись о начале сессии пользователя.",
+      "hint": "grep по syslog. Сессии создаёт systemd-logind; ищи Started Session или New session.",
+      "solution": "grep -i session /var/log/syslog",
+      "language": "bash"
+    },
+    {
+      "id": "auth-sudo",
+      "task": "Найти в логах все команды, выполненные через sudo, с именами пользователей.",
+      "hint": "События sudo пишутся в auth.log.",
+      "solution": "grep sudo /var/log/auth.log",
+      "language": "bash",
+      "note": "В строке видно пользователя, каталог, от чьего имени (USER=root) и полную команду."
+    },
+    {
+      "id": "ssh-restart",
+      "task": "Перезапустить SSH и найти подтверждение в системном логе.",
+      "hint": "systemctl restart, затем grep по syslog.",
+      "solution": "sudo systemctl restart ssh\ngrep ssh /var/log/syslog | tail",
+      "language": "bash",
+      "note": "В проекте найдена запись ssh.service: Succeeded."
+    },
+    {
+      "id": "journal-unit",
+      "task": "Посмотреть логи службы ssh за последний час средствами systemd.",
+      "hint": "journalctl с фильтром по unit и по времени.",
+      "solution": "journalctl -u ssh --since \"1 hour ago\"",
+      "language": "bash"
+    },
+    {
+      "id": "failed-logins",
+      "task": "Проверить, были ли неудачные попытки входа по SSH, и посчитать их.",
+      "hint": "Строка Failed password в auth.log, количество — grep -c.",
+      "solution": "grep \"Failed password\" /var/log/auth.log\ngrep -c \"Failed password\" /var/log/auth.log",
+      "language": "bash",
+      "note": "Этого шага в проекте не было. На сервере с открытым портом 22 в интернете здесь будут тысячи строк."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "В каком файле Ubuntu искать, кто выполнял команды через sudo?",
+      "options": ["/var/log/syslog", "/var/log/dmesg", "/var/log/auth.log", "/var/log/kern.log"],
+      "correctIndex": 2,
+      "explanation": "auth.log — всё, что связано с аутентификацией и повышением прав: SSH, su, sudo."
+    },
+    {
+      "id": "q2",
+      "question": "Как следить за новыми строками лога в реальном времени?",
+      "options": ["tail -f /var/log/syslog", "cat /var/log/syslog", "less /var/log/syslog", "head /var/log/syslog"],
+      "correctIndex": 0,
+      "explanation": "tail -f держит файл открытым и выводит строки по мере появления. Аналог для журнала systemd — journalctl -f."
+    },
+    {
+      "id": "q3",
+      "question": "Сервер перезагрузился сам ночью. Как посмотреть журнал предыдущей загрузки?",
+      "options": [
+        "cat /var/log/dmesg",
+        "journalctl -f",
+        "Это невозможно — журнал очищается при перезагрузке",
+        "journalctl -b -1"
+      ],
+      "correctIndex": 3,
+      "explanation": "-b 0 — текущая загрузка, -b -1 — предыдущая. Работает, если журнал хранится на диске (/var/log/journal), как в Ubuntu по умолчанию."
+    },
+    {
+      "id": "q4",
+      "question": "Откуда берутся файлы auth.log.1 и auth.log.2.gz?",
+      "options": [
+        "Их создаёт sshd при каждом подключении",
+        "Их создаёт logrotate: переименовывает старые логи, сжимает и со временем удаляет",
+        "Это резервные копии, созданные apt",
+        "Это логи других пользователей"
+      ],
+      "correctIndex": 1,
+      "explanation": "Ротация не даёт логам заполнить диск. Искать в сжатых — zgrep."
+    }
+  ]
+}

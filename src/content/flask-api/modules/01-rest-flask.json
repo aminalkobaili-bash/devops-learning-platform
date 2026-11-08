@@ -1,0 +1,93 @@
+{
+  "id": "01-rest-flask",
+  "theoryFile": "01-rest-flask.md",
+  "practice": [
+    {
+      "id": "signup-login",
+      "task": "Через curl зарегистрировать пользователя alice и войти, сохранив access-токен в переменную.",
+      "hint": "POST с Content-Type: application/json. Токен из ответа — jq -r .accessToken.",
+      "solution": "API=http://127.0.0.1:5000\n\ncurl -s -X POST $API/signup -H 'Content-Type: application/json' \\\n  -d '{\"login\":\"alice\",\"password\":\"alice-pass\"}'\n# 201 {\"message\": \"User registered successfully\"}\n\nACCESS=$(curl -s -X POST $API/login -H 'Content-Type: application/json' \\\n  -d '{\"login\":\"alice\",\"password\":\"alice-pass\"}' | jq -r .accessToken)",
+      "language": "bash",
+      "note": "Из docs/api-examples.md."
+    },
+    {
+      "id": "auth-header",
+      "task": "Получить текущего пользователя с токеном и без него. Какие коды вернутся?",
+      "hint": "Заголовок Authorization: Bearer <token>.",
+      "solution": "curl -s $API/users/me -H \"Authorization: Bearer $ACCESS\"\n# 200 {\"uuid\": \"...\", \"login\": \"alice\"}\n\ncurl -s -i $API/users/me\n# 401 {\"error\": \"Unauthorized\", \"message\": \"Bearer token required\"}",
+      "language": "bash",
+      "note": "curl -i показывает статус и заголовки ответа."
+    },
+    {
+      "id": "route",
+      "task": "Написать маршрут Flask GET /games/<uuid_str>, который передаёт работу в обработчик и возвращает JSON с кодом.",
+      "hint": "@app.route с methods, обработчик возвращает (dict, code), jsonify.",
+      "solution": "@app.route(\"/games/<uuid_str>\", methods=[\"GET\"])\ndef get_game(uuid_str):\n    data, status = get_game_handler(service, uuid_str)\n    return jsonify(data), status",
+      "language": "python"
+    },
+    {
+      "id": "uuid-validate",
+      "task": "В обработчике проверить, что uuid_str — корректный UUID, иначе вернуть 400.",
+      "hint": "UUID(str) бросает ValueError.",
+      "solution": "from uuid import UUID\n\ntry:\n    game_uuid = UUID(uuid_str)\nexcept ValueError:\n    return ErrorResponse(\"Invalid UUID format\").to_json(), 400",
+      "language": "python",
+      "note": "Альтернатива — конвертер маршрута <uuid:game_uuid>: Flask сам вернёт 404 на не-UUID."
+    },
+    {
+      "id": "before-request",
+      "task": "Написать before_request, который пропускает signup и login, а для остальных требует заголовок Authorization: Bearer …",
+      "hint": "request.endpoint, request.headers.get, возврат (dict, 401) останавливает запрос.",
+      "solution": "@app.before_request\ndef authenticate():\n    if request.endpoint in [\"signup\", \"login\", \"refresh_access\", \"refresh_refresh\"]:\n        return\n    auth_header = request.headers.get(\"Authorization\")\n    if not auth_header or not auth_header.startswith(\"Bearer \"):\n        return {\"error\": \"Unauthorized\", \"message\": \"Bearer token required\"}, 401\n    token = auth_header.split(\" \")[1]\n    try:\n        g.user_uuid = jwt_provider.validate_access_token(token)\n    except JwtError as e:\n        return {\"error\": \"Unauthorized\", \"message\": str(e)}, 401",
+      "language": "python",
+      "note": "Из main.py."
+    },
+    {
+      "id": "leaderboard-query",
+      "task": "Запросить топ-5 игроков и проверить ответ на некорректный limit=0.",
+      "hint": "Параметр query-строки ?limit=N.",
+      "solution": "curl -s \"$API/leaderboard?limit=5\" -H \"Authorization: Bearer $ACCESS\"\ncurl -s \"$API/leaderboard?limit=0\" -H \"Authorization: Bearer $ACCESS\"   # 400",
+      "language": "bash",
+      "note": "URL в кавычках: иначе shell может интерпретировать ? и &."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Клиент отправил запрос без токена к защищённому маршруту. Какой код правильный?",
+      "options": ["400 Bad Request", "403 Forbidden", "404 Not Found", "401 Unauthorized"],
+      "correctIndex": 3,
+      "explanation": "401 — «кто ты?»: нет или неверные учётные данные. 403 — «знаю, кто ты, но нельзя»."
+    },
+    {
+      "id": "q2",
+      "question": "Что делает функция с декоратором @app.before_request, если она вернула (dict, 401)?",
+      "options": [
+        "Запрос прерывается: клиент получает этот ответ, обработчик маршрута не вызывается",
+        "Ответ добавляется к ответу обработчика",
+        "Возврат игнорируется",
+        "Flask выбрасывает исключение"
+      ],
+      "correctIndex": 0,
+      "explanation": "Так в проекте реализована проверка токена для всех маршрутов, кроме белого списка."
+    },
+    {
+      "id": "q3",
+      "question": "Зачем Flask-приложение создают функцией create_app(), а не глобальной переменной?",
+      "options": [
+        "Так быстрее работает",
+        "Можно создать приложение с другой конфигурацией (например, для тестов) и передать фабрику WSGI-серверу",
+        "Иначе не работает JWT",
+        "Это требование PostgreSQL"
+      ],
+      "correctIndex": 1,
+      "explanation": "Паттерн application factory из документации Flask. gunicorn \"main:create_app()\" вызовет фабрику сам."
+    },
+    {
+      "id": "q4",
+      "question": "Какой HTTP-метод не идемпотентен?",
+      "options": ["GET", "PUT", "POST", "DELETE"],
+      "correctIndex": 2,
+      "explanation": "Два одинаковых POST /games создадут две игры. GET, PUT и DELETE при повторе дают тот же результат."
+    }
+  ]
+}

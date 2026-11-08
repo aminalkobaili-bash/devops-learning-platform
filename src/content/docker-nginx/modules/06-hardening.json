@@ -1,0 +1,103 @@
+{
+  "id": "06-hardening",
+  "theoryFile": "06-hardening.md",
+  "practice": [
+    {
+      "id": "dockle",
+      "task": "Проверить собранный образ Dockle.",
+      "hint": "docker save в tar, затем dockle --input.",
+      "solution": "docker save docker-nginx-fastcgi:1.0 -o docker-nginx-fastcgi.tar\ndockle --input docker-nginx-fastcgi.tar",
+      "language": "bash",
+      "note": "В проекте: только INFO CIS-DI-0005. Без tar — dockle docker-nginx-fastcgi:1.0, если Dockle видит Docker-демон."
+    },
+    {
+      "id": "user",
+      "task": "Создать в образе системного пользователя appuser без входа в систему и запускать контейнер от него.",
+      "hint": "useradd -r -s /usr/sbin/nologin; USER в конце Dockerfile.",
+      "solution": "RUN useradd -r -s /usr/sbin/nologin appuser\n# … остальные RUN от root …\nUSER appuser",
+      "language": "dockerfile"
+    },
+    {
+      "id": "find-suid",
+      "task": "Найти в образе все файлы с битами SUID или SGID.",
+      "hint": "find -perm /6000.",
+      "solution": "docker run --rm --entrypoint sh docker-nginx-fastcgi:1.0 \\\n  -c 'find / -xdev -perm /6000 -type f 2>/dev/null'",
+      "language": "bash",
+      "note": "В исправленном образе вывод должен быть пустым."
+    },
+    {
+      "id": "remove-suid",
+      "task": "Снять SUID и SGID со всех файлов образа одной командой, без захардкоженного списка.",
+      "hint": "find … -exec chmod a-s {} +.",
+      "solution": "RUN find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true",
+      "language": "dockerfile",
+      "note": "В проекте — список из 11 файлов. Вариант с find не пропустит новый SUID-бинарник при обновлении базы."
+    },
+    {
+      "id": "healthcheck",
+      "task": "Посмотреть историю проверок healthcheck контейнера fastcgi-server.",
+      "hint": "docker inspect, поле .State.Health.",
+      "solution": "docker inspect --format '{{json .State.Health}}' fastcgi-server",
+      "language": "bash",
+      "note": "Вывод: Status, FailingStreak и последние результаты с кодом выхода и выводом curl."
+    },
+    {
+      "id": "run-hardened",
+      "task": "Запустить контейнер с дополнительными ограничениями: без повышения привилегий, без capabilities, с файловой системой только для чтения.",
+      "hint": "--security-opt no-new-privileges, --cap-drop ALL, --read-only + --tmpfs /tmp.",
+      "solution": "docker run -d --name srv-hardened \\\n  --security-opt no-new-privileges \\\n  --cap-drop ALL \\\n  --read-only --tmpfs /tmp --tmpfs /var/log/nginx \\\n  docker-nginx-fastcgi:1.0",
+      "language": "bash",
+      "note": "Задачи нет в проекте, команда не проверялась. --read-only возможен, потому что nginx уже пишет pid и temp-файлы в /tmp; логам нужен свой tmpfs (или вывод в stdout). Порт 81 открывается без capabilities — модуль 02."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему запуск контейнера от root — риск, если контейнер изолирован?",
+      "options": [
+        "root в контейнере медленнее",
+        "Изоляция контейнеров полностью защищает от этого — риска нет",
+        "root в контейнере — тот же root ядра хоста; при побеге из контейнера или опасном монтировании он становится root на хосте",
+        "root не может открыть порт"
+      ],
+      "correctIndex": 2,
+      "explanation": "Ядро общее. Dockle помечает это как WARN CIS-DI-0001 — первая проблема исходного образа."
+    },
+    {
+      "id": "q2",
+      "question": "Что даёт бит SUID у /usr/bin/passwd?",
+      "options": [
+        "Программа выполняется с правами владельца файла (root), а не запустившего её пользователя",
+        "Файл нельзя удалить",
+        "Файл скрыт от ls",
+        "Программа запускается при загрузке"
+      ],
+      "correctIndex": 0,
+      "explanation": "Нужно для смены пароля обычным пользователем. В контейнере не нужно и опасно — поэтому биты сняты."
+    },
+    {
+      "id": "q3",
+      "question": "Чем плох тег nginx:latest в Dockerfile?",
+      "options": [
+        "Он весит больше",
+        "Он недоступен без авторизации",
+        "Он содержит уязвимости",
+        "Сборка невоспроизводима: со временем под latest окажется другая версия"
+      ],
+      "correctIndex": 3,
+      "explanation": "В проекте заменён на nginx:1.30-alpine. Максимальная воспроизводимость — закрепление по digest @sha256."
+    },
+    {
+      "id": "q4",
+      "question": "Контейнер перешёл в состояние unhealthy. Что сделает Docker без оркестратора?",
+      "options": [
+        "Перезапустит контейнер",
+        "Ничего, кроме смены статуса — его используют Compose (depends_on), Swarm и оркестраторы",
+        "Удалит контейнер",
+        "Остановит контейнер"
+      ],
+      "correctIndex": 1,
+      "explanation": "restart: policy реагирует на завершение процесса, а не на health-статус. В Swarm unhealthy-задача заменяется новой."
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "id": "05-views",
+  "theoryFile": "05-views.md",
+  "practice": [
+    {
+      "id": "ex00",
+      "task": "Создать два представления: v_persons_female (все клиентки) и v_persons_male (все клиенты-мужчины) — все колонки person.",
+      "hint": "CREATE VIEW … AS SELECT * FROM person WHERE gender = …",
+      "solution": "CREATE VIEW v_persons_female AS\nSELECT *\nFROM person\nWHERE gender = 'female';\n\nCREATE VIEW v_persons_male AS\nSELECT *\nFROM person\nWHERE gender = 'male';\n\n-- откат\n-- DROP VIEW v_persons_female, v_persons_male;",
+      "language": "sql"
+    },
+    {
+      "id": "ex01",
+      "task": "Используя представления из ex00, вывести имена всех клиентов одним списком, по алфавиту.",
+      "hint": "Представления читаются как таблицы. Дубликатов между ними быть не может — подойдёт UNION ALL.",
+      "solution": "SELECT name FROM v_persons_female\nUNION ALL\nSELECT name FROM v_persons_male\nORDER BY name;",
+      "language": "sql",
+      "note": "UNION ALL быстрее UNION: не тратится время на поиск дубликатов, которых здесь нет по определению — у клиента один пол."
+    },
+    {
+      "id": "ex02",
+      "task": "Создать представление v_generated_dates с колонкой generated_date — все даты января 2022.",
+      "hint": "generate_series по датам с шагом '1 day' и приведение ::date.",
+      "solution": "CREATE VIEW v_generated_dates AS\nSELECT gs::date AS generated_date\nFROM generate_series('2022-01-01'::date, '2022-01-31'::date, '1 day') AS gs\nORDER BY generated_date;\n\n-- откат\n-- DROP VIEW v_generated_dates;",
+      "language": "sql"
+    },
+    {
+      "id": "ex03",
+      "task": "Используя v_generated_dates, вывести даты января 2022, в которые не было ни одного визита (колонка missing_date), по возрастанию.",
+      "hint": "Все даты из view минус даты визитов.",
+      "solution": "SELECT generated_date AS missing_date\nFROM v_generated_dates\nEXCEPT\nSELECT visit_date\nFROM person_visits\nORDER BY missing_date;",
+      "language": "sql",
+      "note": "ORDER BY внутри v_generated_dates здесь не помогает: после EXCEPT порядок не гарантирован, поэтому сортировка нужна снаружи — она и стоит."
+    },
+    {
+      "id": "ex04",
+      "task": "Создать представление v_symmetric_union: person_id клиентов, которые были в пиццериях 02.01.2022 или 06.01.2022, но не в оба дня.",
+      "hint": "Симметрическая разность: (R − S) ∪ (S − R), где R — визиты 02.01, S — визиты 06.01.",
+      "solution": "CREATE VIEW v_symmetric_union AS\n(\n  SELECT person_id\n  FROM person_visits\n  WHERE visit_date = '2022-01-02'\n  EXCEPT\n  SELECT person_id\n  FROM person_visits\n  WHERE visit_date = '2022-01-06'\n)\nUNION\n(\n  SELECT person_id\n  FROM person_visits\n  WHERE visit_date = '2022-01-06'\n  EXCEPT\n  SELECT person_id\n  FROM person_visits\n  WHERE visit_date = '2022-01-02'\n)\nORDER BY person_id;\n\n-- откат\n-- DROP VIEW v_symmetric_union;",
+      "language": "sql"
+    },
+    {
+      "id": "ex05",
+      "task": "Создать представление v_price_with_discount: имя клиента, пицца, цена и discount_price — цена со скидкой 10%, целым числом. По всем заказам.",
+      "hint": "JOIN person → person_order → menu. Вычисляемая колонка с приведением ::integer.",
+      "solution": "CREATE VIEW v_price_with_discount AS\nSELECT p.name,\n       m.pizza_name,\n       m.price,\n       (m.price - m.price * 0.1)::integer AS discount_price\nFROM person p\nJOIN person_order po ON p.id = po.person_id\nJOIN menu m ON po.menu_id = m.id\nORDER BY p.name, m.pizza_name;\n\n-- откат\n-- DROP VIEW v_price_with_discount;",
+      "language": "sql",
+      "note": "::integer округляет до ближайшего целого (787.5 → 788), а не отбрасывает дробную часть. Выражение можно записать короче: (m.price * 0.9)::integer."
+    },
+    {
+      "id": "ex06",
+      "task": "Создать материализованное представление mv_dmitriy_visits_and_eats: названия пиццерий, которые Dmitriy посетил 08.01.2022 и где есть пицца дешевле 800.",
+      "hint": "Запрос похож на 03/ex07. Проверку цены сделай через EXISTS, чтобы не размножать строки.",
+      "solution": "CREATE MATERIALIZED VIEW mv_dmitriy_visits_and_eats AS\nSELECT pz.name AS pizzeria_name\nFROM person_visits pv\nJOIN person p ON pv.person_id = p.id\nJOIN pizzeria pz ON pv.pizzeria_id = pz.id\nWHERE p.name = 'Dmitriy'\n  AND pv.visit_date = '2022-01-08'\n  AND EXISTS (\n    SELECT 1\n    FROM menu m\n    WHERE m.pizzeria_id = pz.id\n      AND m.price < 800\n  );\n\n-- откат\n-- DROP MATERIALIZED VIEW mv_dmitriy_visits_and_eats;",
+      "language": "sql"
+    },
+    {
+      "id": "ex07",
+      "task": "Добавить визит Dmitriy в DoDo Pizza 08.01.2022 (id и ссылки — без хардкода) и обновить mv_dmitriy_visits_and_eats.",
+      "hint": "INSERT … SELECT с JOIN по именам, затем REFRESH MATERIALIZED VIEW.",
+      "solution": "INSERT INTO person_visits (id, person_id, pizzeria_id, visit_date)\nSELECT (SELECT MAX(id) + 1 FROM person_visits),\n       p.id,\n       pz.id,\n       '2022-01-08'\nFROM person p\nJOIN pizzeria pz ON pz.name = 'DoDo Pizza'\nWHERE p.name = 'Dmitriy';\n\nREFRESH MATERIALIZED VIEW mv_dmitriy_visits_and_eats;",
+      "language": "sql",
+      "note": "JOIN pizzeria pz ON pz.name = 'DoDo Pizza' — соединение без связи по ключу: условие просто выбирает одну строку pizzeria, чтобы взять её id. Без REFRESH новый визит в MV не появится."
+    },
+    {
+      "id": "ex08",
+      "task": "Удалить визит, добавленный в ex07, и все созданные в модуле представления и материализованное представление.",
+      "hint": "DELETE с подзапросами по именам, затем DROP VIEW × 5 и DROP MATERIALIZED VIEW.",
+      "solution": "DELETE FROM person_visits\nWHERE visit_date = '2022-01-08'\n  AND person_id = (SELECT id FROM person WHERE name = 'Dmitriy')\n  AND pizzeria_id = (SELECT id FROM pizzeria WHERE name = 'DoDo Pizza');\n\nDROP VIEW v_persons_female;\nDROP VIEW v_persons_male;\nDROP VIEW v_generated_dates;\nDROP VIEW v_symmetric_union;\nDROP VIEW v_price_with_discount;\n\nDROP MATERIALIZED VIEW mv_dmitriy_visits_and_eats;",
+      "language": "sql",
+      "note": "Пять DROP VIEW можно записать одной командой через запятую. С IF EXISTS скрипт не упадёт при повторном запуске."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Создан VIEW v_persons_female. Потом в person добавили новую клиентку. Что покажет SELECT * FROM v_persons_female?",
+      "options": [
+        "Старые данные, пока не выполнить REFRESH VIEW",
+        "Новую клиентку сразу — VIEW выполняет запрос при каждом обращении",
+        "Ошибку: VIEW устарел и его нужно пересоздать",
+        "Новую клиентку, но только после перезапуска сессии"
+      ],
+      "correctIndex": 1,
+      "explanation": "Обычное представление данных не хранит — это сохранённый запрос. REFRESH нужен только материализованному представлению."
+    },
+    {
+      "id": "q2",
+      "question": "После создания MATERIALIZED VIEW в исходную таблицу добавили строку, REFRESH не выполняли. Что покажет SELECT из MV?",
+      "options": [
+        "Новые данные — MV обновляется автоматически",
+        "Ошибку: данные устарели",
+        "Пустой результат",
+        "Старые данные — снимок на момент создания"
+      ],
+      "correctIndex": 3,
+      "explanation": "MV хранит результат на диске и пересчитывает его только по команде REFRESH MATERIALIZED VIEW."
+    },
+    {
+      "id": "q3",
+      "question": "Цена 875. Что вернёт (875 - 875 * 0.1)::integer?",
+      "options": ["788", "787", "787.5", "Ошибку приведения типа"],
+      "correctIndex": 0,
+      "explanation": "875 − 87.5 = 787.5. Приведение numeric → integer округляет до ближайшего целого, половина — от нуля, поэтому 788. Отбросить дробь — trunc()."
+    },
+    {
+      "id": "q4",
+      "question": "Что такое симметрическая разность множеств R и S?",
+      "options": [
+        "Элементы, которые есть и в R, и в S",
+        "Все элементы R и S без дубликатов",
+        "Элементы, которые есть ровно в одном из множеств: (R − S) ∪ (S − R)",
+        "Элементы R, которых нет в S"
+      ],
+      "correctIndex": 2,
+      "explanation": "Первый вариант — пересечение (INTERSECT), второй — объединение (UNION), четвёртый — разность (EXCEPT). Симметрическая разность — их «исключающее ИЛИ»."
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "docker-swarm",
+  "title": "Docker Compose → Swarm",
+  "description": "Backend бронирования отелей из 9 сервисов (7 Spring Boot + PostgreSQL + RabbitMQ): Docker-образы, запуск одной командой в Compose, затем кластер Docker Swarm из трёх ВМ Vagrant с nginx в роли reverse proxy и проверка тестами Postman. Код сервисов — учебный, инфраструктура — своя.",
+  "stack": ["Docker 29", "Compose v2", "Docker Swarm", "nginx", "Vagrant", "PostgreSQL 18", "RabbitMQ 4", "Maven", "Postman / newman", "Portainer"],
+  "repo": "https://github.com/aminalkobaili-bash/docker-compose-microservices",
+  "modules": [
+    { "id": "01-java-images", "order": 1, "title": "Образы для Java-сервисов", "level": "intermediate", "topics": ["Maven multi-stage", "ARG SERVICE", "cache mount", "non-root"] },
+    { "id": "02-compose", "order": 2, "title": "Compose для 9 сервисов", "level": "intermediate", "topics": ["YAML-якоря", "${VAR:?}", "DNS сервисов", "ports"] },
+    { "id": "03-startup-order", "order": 3, "title": "Порядок запуска и healthcheck", "level": "intermediate", "topics": ["pg_isready", "service_healthy", "wait-for-it", "$$"] },
+    { "id": "04-data-secrets", "order": 4, "title": "Данные, init.sql и секреты", "level": "advanced", "topics": ["initdb.d", "volumes", "JWT-ключи", "Docker secrets"] },
+    { "id": "05-swarm-cluster", "order": 5, "title": "Кластер Swarm на Vagrant", "level": "intermediate", "topics": ["manager / worker", "Raft", "join-token", "advertise-addr"] },
+    { "id": "06-stack-deploy", "order": 6, "title": "docker stack deploy", "level": "advanced", "topics": ["deploy:", "placement", "overlay", "routing mesh"] },
+    { "id": "07-nginx-swarm", "order": 7, "title": "nginx как вход в стек", "level": "intermediate", "topics": ["resolver 127.0.0.11", "proxy_pass $var", "таймауты"] },
+    { "id": "08-operations", "order": 8, "title": "Ресурсы, тесты и диагностика", "level": "advanced", "topics": ["JVM в контейнере", "newman", "service ps", "Portainer"] }
+  ]
+}

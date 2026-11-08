@@ -1,0 +1,103 @@
+{
+  "id": "06-auth-jwt",
+  "theoryFile": "06-auth-jwt.md",
+  "practice": [
+    {
+      "id": "hash",
+      "task": "Захешировать пароль при регистрации и проверить его при входе средствами Werkzeug.",
+      "hint": "generate_password_hash / check_password_hash.",
+      "solution": "from werkzeug.security import generate_password_hash, check_password_hash\n\n# регистрация\nuser = User(uuid=uuid4(), login=login, password=generate_password_hash(password))\n\n# вход\nif user is None or not check_password_hash(user.password, password):\n    raise DomainError(\"Invalid login or password\")",
+      "language": "python",
+      "note": "Исправлено после ревью: раньше password хранился как есть. В БД теперь scrypt:32768:8:1$…"
+    },
+    {
+      "id": "hash-salt",
+      "task": "Убедиться, что один и тот же пароль даёт разные хеши, но оба проходят проверку.",
+      "hint": "Вызвать generate_password_hash дважды.",
+      "solution": "from werkzeug.security import generate_password_hash, check_password_hash\n\nh1 = generate_password_hash(\"alice-pass\")\nh2 = generate_password_hash(\"alice-pass\")\nprint(h1 == h2)                                  # False — разная соль\nprint(check_password_hash(h1, \"alice-pass\"))     # True\nprint(check_password_hash(h2, \"alice-pass\"))     # True",
+      "language": "python"
+    },
+    {
+      "id": "tokens",
+      "task": "Выпустить access- и refresh-токен для пользователя.",
+      "hint": "create_access_token / create_refresh_token с identity — строкой.",
+      "solution": "from flask_jwt_extended import create_access_token, create_refresh_token\n\naccess = create_access_token(identity=str(user_uuid))\nrefresh = create_refresh_token(identity=str(user_uuid))",
+      "language": "python",
+      "note": "Сроки жизни берутся из конфигурации: JWT_ACCESS_TOKEN_EXPIRES (15 мин), JWT_REFRESH_TOKEN_EXPIRES (7 дней). Вызывать внутри app context."
+    },
+    {
+      "id": "validate-type",
+      "task": "Проверить токен: подпись, срок, тип (access или refresh) и вернуть UUID пользователя.",
+      "hint": "decode_token, затем claim type и sub.",
+      "solution": "def _extract_uuid_from_token(self, token: str, expected_type: str) -> UUID:\n    try:\n        data = decode_token(token)\n    except Exception as e:\n        raise JwtError(f\"Invalid token: {str(e)}\")\n    if data.get(\"type\") != expected_type:\n        raise JwtError(f\"Invalid token type: expected {expected_type} token\")\n    identity = data.get(\"sub\")\n    if identity is None:\n        raise JwtError(\"Invalid token: missing identity\")\n    try:\n        return UUID(identity)\n    except ValueError:\n        raise JwtError(\"Invalid token: malformed identity\")",
+      "language": "python",
+      "note": "Из web/jwt_provider.py — исправление после ревью."
+    },
+    {
+      "id": "decode-payload",
+      "task": "Прочитать payload JWT без секрета и убедиться, что он не зашифрован.",
+      "hint": "Вторая часть токена — base64url. Python: base64.urlsafe_b64decode с дополнением =.",
+      "solution": "import base64, json\n\npayload = token.split(\".\")[1]\npayload += \"=\" * (-len(payload) % 4)\nprint(json.loads(base64.urlsafe_b64decode(payload)))\n# {'sub': '…uuid…', 'type': 'access', 'exp': …, 'iat': …, 'jti': '…', …}",
+      "language": "python",
+      "note": "Задачи нет в проекте. Вывод: в payload нельзя класть секреты."
+    },
+    {
+      "id": "refresh-curl",
+      "task": "Через API получить новый access-токен по refresh-токену и проверить, что access-токен на этом эндпоинте не принимается.",
+      "hint": "POST /refresh/access с {\"refreshToken\": …}.",
+      "solution": "curl -s -X POST $API/refresh/access -H 'Content-Type: application/json' \\\n  -d \"{\\\"refreshToken\\\":\\\"$REFRESH\\\"}\"\n\ncurl -s -X POST $API/refresh/access -H 'Content-Type: application/json' \\\n  -d \"{\\\"refreshToken\\\":\\\"$ACCESS\\\"}\"\n# 401 Invalid token type: expected refresh token",
+      "language": "bash",
+      "note": "Из docs/api-examples.md."
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "Почему для паролей не подходит sha256(password)?",
+      "options": [
+        "sha256 слишком короткий",
+        "sha256 нельзя проверить",
+        "Он быстрый и без соли: одинаковые пароли дают одинаковый хеш, перебор и rainbow tables дешёвы",
+        "sha256 запрещён в Python"
+      ],
+      "correctIndex": 2,
+      "explanation": "Для паролей нужны медленные алгоритмы с солью: scrypt (Werkzeug по умолчанию), argon2, bcrypt."
+    },
+    {
+      "id": "q2",
+      "question": "Можно ли прочитать содержимое JWT без секретного ключа?",
+      "options": [
+        "Да — header и payload только закодированы base64url; секрет нужен для проверки подписи",
+        "Нет, токен зашифрован",
+        "Только header",
+        "Только на сервере"
+      ],
+      "correctIndex": 0,
+      "explanation": "JWT (JWS) подписан, но не зашифрован. Подпись не даёт изменить данные, но не скрывает их."
+    },
+    {
+      "id": "q3",
+      "question": "Чем опасно, если сервер не проверяет claim type и принимает refresh-токен как access?",
+      "options": [
+        "Ничем",
+        "Сервер будет работать медленнее",
+        "Токены перестанут истекать",
+        "Украденный refresh-токен даёт доступ к API на 7 дней вместо 15 минут — смысл короткого access теряется"
+      ],
+      "correctIndex": 3,
+      "explanation": "Уязвимость, найденная и исправленная в проекте: теперь refresh на /users/me → 401."
+    },
+    {
+      "id": "q4",
+      "question": "Пользователь нажал «выйти». Почему его старый refresh-токен всё ещё работает?",
+      "options": [
+        "Ошибка flask-jwt-extended",
+        "JWT stateless: он валиден до exp, пока сервер не хранит список отозванных jti (blocklist)",
+        "Токен кешируется в браузере",
+        "Нужно перезапустить сервер"
+      ],
+      "correctIndex": 1,
+      "explanation": "Ограничение из README: нет blocklist. Решение — token_in_blocklist_loader и хранение отозванных jti в Redis или БД."
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "id": "01-containers",
+  "theoryFile": "01-containers.md",
+  "practice": [
+    {
+      "id": "run",
+      "task": "Скачать nginx:1.30-alpine и запустить его в фоне с именем web так, чтобы он открывался на порту 8080 хоста.",
+      "hint": "docker run -d --name -p хост:контейнер.",
+      "solution": "docker pull nginx:1.30-alpine\ndocker run -d --name web -p 8080:80 nginx:1.30-alpine\ndocker ps\ncurl -I localhost:8080",
+      "language": "bash"
+    },
+    {
+      "id": "inspect",
+      "task": "Узнать IP-адрес контейнера web и какие порты проброшены.",
+      "hint": "docker inspect с шаблоном -f или docker port.",
+      "solution": "docker inspect -f '{{.NetworkSettings.IPAddress}}' web\ndocker port web",
+      "language": "bash"
+    },
+    {
+      "id": "cp-reload",
+      "task": "Подложить в работающий контейнер свой nginx.conf с location /status и применить без перезапуска.",
+      "hint": "docker cp, затем nginx -t и nginx -s reload через docker exec.",
+      "solution": "docker cp nginx/standalone-status.conf web:/etc/nginx/nginx.conf\ndocker exec web nginx -t\ndocker exec web nginx -s reload\ncurl localhost:8080/status",
+      "language": "bash",
+      "note": "Конфиг из репозитория: nginx/standalone-status.conf."
+    },
+    {
+      "id": "mount",
+      "task": "Запустить nginx с тем же конфигом через монтирование, чтобы изменения пережили пересоздание контейнера.",
+      "hint": "-v путь_на_хосте:путь_в_контейнере:ro.",
+      "solution": "docker run -d --name nginx-status -p 8089:80 \\\n  -v \"$(pwd)/nginx/standalone-status.conf:/etc/nginx/nginx.conf:ro\" nginx:1.30-alpine\ncurl localhost:8089/status",
+      "language": "bash",
+      "note": "Команда из README проекта. :ro — только чтение: контейнер не сможет изменить файл."
+    },
+    {
+      "id": "export-import",
+      "task": "Экспортировать файловую систему контейнера web в архив, импортировать как новый образ и запустить.",
+      "hint": "export → import. После import нужно явно указать команду запуска.",
+      "solution": "docker export web > container.tar\ndocker import container.tar my-nginx:imported\ndocker run -d --name web2 -p 8081:80 my-nginx:imported nginx -g \"daemon off;\"\ncurl -I localhost:8081",
+      "language": "bash",
+      "note": "container.tar в проекте весил 156 MB и раньше попадал в контекст сборки — до появления .dockerignore (модуль 05)."
+    },
+    {
+      "id": "cleanup",
+      "task": "Остановить и удалить созданные контейнеры и посмотреть, сколько места занимает Docker.",
+      "hint": "docker rm -f, docker system df.",
+      "solution": "docker rm -f web web2 nginx-status\ndocker system df",
+      "language": "bash"
+    }
+  ],
+  "quiz": [
+    {
+      "id": "q1",
+      "question": "docker run -p 8080:80 nginx. По какому адресу открыть сайт с хоста?",
+      "options": ["localhost:80", "localhost:8080", "IP контейнера:8080", "localhost:8000"],
+      "correctIndex": 1,
+      "explanation": "Формат -p ХОСТ:КОНТЕЙНЕР. nginx слушает 80 внутри, снаружи он доступен на 8080."
+    },
+    {
+      "id": "q2",
+      "question": "Чем docker export / import отличается от docker save / load?",
+      "options": [
+        "Ничем",
+        "save работает только с запущенными контейнерами",
+        "import сохраняет больше метаданных",
+        "export сохраняет файловую систему контейнера одним слоем без CMD/ENV/истории; save — образ целиком со слоями и метаданными"
+      ],
+      "correctIndex": 3,
+      "explanation": "Поэтому после import в проекте команду запуска пришлось указывать вручную."
+    },
+    {
+      "id": "q3",
+      "question": "Конфиг изменили через docker cp в контейнер. Что будет после docker rm и нового docker run из того же образа?",
+      "options": [
+        "Изменения пропадут — они были в записывающем слое удалённого контейнера",
+        "Изменения сохранятся в образе",
+        "Docker спросит, сохранить ли изменения",
+        "Контейнер не запустится"
+      ],
+      "correctIndex": 0,
+      "explanation": "Образ неизменяем. Для постоянных изменений — монтирование (-v) или свой Dockerfile."
+    },
+    {
+      "id": "q4",
+      "question": "Что делает docker stop?",
+      "options": [
+        "Сразу убивает процесс SIGKILL",
+        "Ставит контейнер на паузу (freeze cgroup)",
+        "Отправляет SIGTERM главному процессу, а через 10 секунд — SIGKILL",
+        "Удаляет контейнер"
+      ],
+      "correctIndex": 2,
+      "explanation": "Процесс получает шанс корректно завершиться. Поэтому важно, чтобы главным процессом (PID 1) было само приложение — модуль 04."
+    }
+  ]
+}
